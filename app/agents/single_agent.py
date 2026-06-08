@@ -87,6 +87,56 @@ class QwenToolCallParsingMiddleware(AgentMiddleware):
         )
 
 
+class ToolUsageReminderMiddleware(AgentMiddleware):
+    """Middleware that appends tool-usage info when the model forgets to mention it.
+
+    After the agent finishes (no more tool_calls), this middleware checks the
+    conversation history for preceding ToolMessage entries.  If any tools were
+    used but the final AIMessage does not contain the name of at least one of
+    them, the middleware appends a brief "使用的工具：..." note.
+    """
+
+    def wrap_model_call(
+        self, request: ModelRequest, handler: Any
+    ) -> ModelResponse:
+        response: ModelResponse = handler(request)
+
+        new_messages: list[BaseMessage] = []
+        for msg in response.result:
+            if isinstance(msg, AIMessage) and not msg.tool_calls and msg.content:
+                # This is a final text answer (no further tool calls).
+                # Look back through the full message history to find which
+                # tools were called earlier in this turn.
+                used_tools: list[str] = []
+                for m in request.messages:
+                    tool_name = getattr(m, "name", None)
+                    if tool_name and tool_name not in used_tools:
+                        used_tools.append(tool_name)
+
+                if used_tools:
+                    content = str(msg.content)
+                    # Only append if the model didn't already mention the tool
+                    already_mentioned = any(
+                        tool_name in content for tool_name in used_tools
+                    )
+                    if not already_mentioned:
+                        tool_list = "、".join(used_tools)
+                        new_content = f"使用的工具：{tool_list}\n{content}"
+                        new_msg = AIMessage(
+                            content=new_content,
+                            id=msg.id,
+                        )
+                        new_messages.append(new_msg)
+                        continue
+
+            new_messages.append(msg)
+
+        return ModelResponse(
+            result=new_messages,
+            structured_response=response.structured_response,
+        )
+
+
 # ---------------------------------------------------------------------------
 # Tools
 # ---------------------------------------------------------------------------
@@ -120,11 +170,16 @@ def build_agent():
     agent = create_agent(
         model=model,
         tools=[add, multiply],
-        middleware=[QwenToolCallParsingMiddleware()],
+        middleware=[
+            QwenToolCallParsingMiddleware(),
+            ToolUsageReminderMiddleware(),  # 如果用qwen3.6-30B 可以不需要这个
+        ],
         system_prompt=(
             "你是一个严谨的工程助手。"
             "当问题需要计算时，你必须优先调用工具，而不是自己心算。"
-            "回答要简洁，并说明你用了哪个工具。"
+            "【重要】每次回答必须严格遵循以下格式，先说明工具使用，再给答案：\n"
+            "使用的工具：<工具名>\n"
+            "答案：<你的答案>"
         ),
     )
 
