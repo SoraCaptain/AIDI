@@ -2,31 +2,10 @@
 
 import os
 import requests
-import base64
-from pathlib import Path
-
+from utils import encode_image
 
 VLM_SERVER = os.getenv("VLM_SERVER", "http://10.6.88.13:8002")
 VLM_MODEL = os.getenv("VLM_MODEL", "Qwen/Qwen3-VL-8B-Instruct")
-
-
-_MIME_MAP = {
-    ".jpg": "image/jpeg",
-    ".jpeg": "image/jpeg",
-    ".png": "image/png",
-    ".bmp": "image/bmp",
-    ".webp": "image/webp",
-    ".gif": "image/gif",
-}
-
-
-def _encode_image(image_path: str) -> str:
-    """Read a local image file and return a data URL string."""
-    ext = Path(image_path).suffix.lower()
-    mime = _MIME_MAP.get(ext, "image/jpeg")
-    with open(image_path, "rb") as f:
-        b64 = base64.b64encode(f.read()).decode("utf-8")
-    return f"data:{mime};base64,{b64}"
 
 
 def ask_vlm_api(image_path: str, question: str) -> str:
@@ -39,7 +18,7 @@ def ask_vlm_api(image_path: str, question: str) -> str:
     if image_path.startswith(("http://", "https://", "data:")):
         image_url = image_path
     else:
-        image_url = _encode_image(image_path)
+        image_url = encode_image(image_path)
     payload = {
         "model": VLM_MODEL,
         "messages": [
