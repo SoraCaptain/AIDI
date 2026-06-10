@@ -4,6 +4,7 @@ import os
 import requests
 from dotenv import load_dotenv
 from mcp.server.fastmcp import FastMCP
+from utils.utils import encode_image
 
 load_dotenv()
 
@@ -61,7 +62,7 @@ def ask_vlm(image_path: str, question: str) -> str:
     Returns:
         Natural language answer from the VLM.
     """
-
+    image_url = encode_image(image_path)
     payload = {
         "model": VLM_MODEL,
         "messages": [
@@ -71,7 +72,7 @@ def ask_vlm(image_path: str, question: str) -> str:
                     {
                         "type": "image_url",
                         "image_url": {
-                            "url": image_path,
+                            "url": image_url,
                         },
                     },
                     {

@@ -2,7 +2,7 @@
 
 import os
 import requests
-from utils import encode_image
+from utils.utils import encode_image
 
 VLM_SERVER = os.getenv("VLM_SERVER", "http://10.6.88.13:8002")
 VLM_MODEL = os.getenv("VLM_MODEL", "Qwen/Qwen3-VL-8B-Instruct")

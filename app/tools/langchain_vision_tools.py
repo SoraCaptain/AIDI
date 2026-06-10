@@ -4,7 +4,7 @@ import os
 import requests
 from dotenv import load_dotenv
 from langchain_core.tools import tool
-from .utils import encode_image
+from utils.utils import encode_image
 
 load_dotenv()
 
