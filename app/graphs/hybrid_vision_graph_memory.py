@@ -102,7 +102,7 @@ async def planner_node(state: HybridVisionState) -> dict:
         你只负责判断任务类型，不直接分析图片。
         
         如果长期记忆中有同一图片或类似问题的历史结果，可以在 plan 和 reason 中说明需要参考历史结果，但不要直接替代新的视觉分析。
-        
+        如果 similar_tasks 中存在高相似历史案例，可以在 plan 中说明要参考它们。但长期记忆只能作为参考，不能替代当前工具分析。
         可选 task_type:
         - no_image: 用户没有提供图片，无法做视觉分析
         - quality_check: 用户主要关心清晰度、模糊、曝光、图像质量
@@ -122,6 +122,8 @@ async def planner_node(state: HybridVisionState) -> dict:
 
     memory_context = state.get("memory_context", {})
 
+    memory_context = state.get("memory_context", {})
+
     user_prompt = f"""
         当前图片路径:
         {image_path}
@@ -136,6 +138,7 @@ async def planner_node(state: HybridVisionState) -> dict:
         {state.get("conversation_history", [])}
 
         长期记忆上下文:
+
         recent_tasks:
         {memory_context.get("recent_tasks", [])}
 
@@ -144,6 +147,9 @@ async def planner_node(state: HybridVisionState) -> dict:
 
         keyword_tasks:
         {memory_context.get("keyword_tasks", [])}
+
+        similar_tasks:
+        {memory_context.get("similar_tasks", [])}
         """
 
     response = await llm.ainvoke(
@@ -246,14 +252,19 @@ def make_vision_agent_node(mcp_tools):
             {human_feedback}
 
             可参考的长期记忆:
+
             same_image_tasks:
             {memory_context.get("same_image_tasks", [])}
 
             keyword_tasks:
             {memory_context.get("keyword_tasks", [])}
 
+            similar_tasks:
+            {memory_context.get("similar_tasks", [])}
+
             请调用合适的 MCP 工具完成视觉分析。
             如果历史记忆与当前工具结果冲突，以当前工具结果为准，并说明差异。
+            不要仅凭历史记忆判断当前图片。
             """
 
         try:
@@ -347,11 +358,15 @@ async def critic_node(state: HybridVisionState) -> dict:
         {vision_answer}
 
         历史记忆:
+
         same_image_tasks:
         {memory_context.get("same_image_tasks", [])}
 
         keyword_tasks:
         {memory_context.get("keyword_tasks", [])}
+
+        similar_tasks:
+        {memory_context.get("similar_tasks", [])}
 
         重试次数:
         {retry_count}
@@ -365,7 +380,8 @@ async def critic_node(state: HybridVisionState) -> dict:
         3. 如果涉及图片内容，是否有 VLM 分析
         4. 如果涉及模糊/清晰度，是否有 blur 检测
         5. 是否存在明显空话、猜测或不确定表达
-        6. 当前结论是否与历史相同图片结果明显冲突
+        6. 当前结论是否与相同图片历史结果明显冲突
+        7. 当前结论是否与相似历史案例有明显冲突
         """
 
     response = await llm.ainvoke(
@@ -509,6 +525,9 @@ async def report_node(state: HybridVisionState) -> dict:
         你是视觉分析报告 Agent。
 
         请根据 Planner、Vision Agent、Critic 和人工复核结果生成最终回答。
+                
+        如果引用历史记忆，请明确说明“历史记录显示...”，不要把历史记录当成当前图像的新观察结果。
+        如果引用 similar_tasks，请明确说明“相似历史案例显示...”，并区分当前工具观察和历史案例。
 
         要求:
         - 中文
@@ -517,8 +536,6 @@ async def report_node(state: HybridVisionState) -> dict:
         - 如果没有图片，提醒用户提供图片
         - 如果分析失败，说明失败原因和下一步建议
         - 如果人工修改过结果，以人工修改内容为准，并说明经过人工复核
-        
-        如果引用历史记忆，请明确说明“历史记录显示...”，不要把历史记录当成当前图像的新观察结果。
         """
 
     memory_context = state.get("memory_context", {})
@@ -548,6 +565,7 @@ async def report_node(state: HybridVisionState) -> dict:
         human_edited_answer = {state.get("human_edited_answer")}
 
         长期记忆参考:
+
         recent_tasks:
         {memory_context.get("recent_tasks", [])}
 
@@ -556,6 +574,9 @@ async def report_node(state: HybridVisionState) -> dict:
 
         keyword_tasks:
         {memory_context.get("keyword_tasks", [])}
+
+        similar_tasks:
+        {memory_context.get("similar_tasks", [])}
 
         错误:
         {state.get("error")}
@@ -788,3 +809,7 @@ if __name__ == "__main__":
 
 # /home/ziyi/gitlocal/AIDI/test_imgs/train01.png
 # /home/ziyi/gitlocal/AIDI/test_imgs/WDED1900240A_04-Cam2-85-1.bmp
+# /home/ziyi/gitlocal/AIDI/test_imgs/WDLD13078D2A_03-Cam1-158-2.bmp
+# /home/ziyi/gitlocal/AIDI/test_imgs/WDLD14249F1A_04-Cam2-1150-3.bmp
+# /home/ziyi/gitlocal/AIDI/test_imgs/WDLD14439B1A_16-Cam1-1226-3.bmp
+# 这张图有没有和以前类似的缺陷？

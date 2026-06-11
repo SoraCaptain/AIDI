@@ -1,8 +1,11 @@
+# app/memory/memory_manager.py
+
 import re
 from typing import Optional, Dict, List
 
 from app.memory.session_memory import SessionMemory
 from app.memory.persistent_memory import PersistentMemory
+from app.memory.vector_memory import VectorMemory
 
 
 class MemoryManager:
@@ -11,7 +14,8 @@ class MemoryManager:
 
     负责：
     - 当前会话短期记忆
-    - SQLite 长期记忆
+    - SQLite 结构化长期记忆
+    - SQLite 向量长期记忆
     - 为 LangGraph 提供 memory_context
     - 保存最终任务结果
     """
@@ -21,10 +25,16 @@ class MemoryManager:
         session_id: str,
         db_path: str = "data/memory/vision_memory.sqlite3",
         max_turns: int = 8,
+        enable_vector_memory: bool = True,
     ):
         self.session_id = session_id
         self.session = SessionMemory(max_turns=max_turns)
         self.persistent = PersistentMemory(db_path=db_path)
+        self.enable_vector_memory = enable_vector_memory
+
+        self.vector = None
+        if enable_vector_memory:
+            self.vector = VectorMemory(db_path=db_path)
 
     def set_current_image(self, image_path: str):
         self.session.set_image(image_path)
@@ -39,7 +49,7 @@ class MemoryManager:
         self.session.add_message("assistant", content)
         self.session.set_last_result(content)
 
-    def get_conversation_history(self) -> List:
+    def get_conversation_history(self) -> List[Dict]:
         return self.session.get_messages()
 
     def get_last_result(self) -> Optional[str]:
@@ -79,6 +89,14 @@ class MemoryManager:
 
         keyword_tasks = self._deduplicate_tasks(keyword_tasks)
 
+        similar_tasks = []
+        if self.enable_vector_memory and self.vector is not None:
+            similar_tasks = self.vector.search_similar_tasks(
+                query=question,
+                top_k=5,
+                min_score=0.35,
+            )
+
         return {
             "session_id": self.session_id,
             "conversation_history": self.get_conversation_history(),
@@ -86,28 +104,38 @@ class MemoryManager:
             "recent_tasks": recent_tasks,
             "same_image_tasks": same_image_tasks,
             "keyword_tasks": keyword_tasks,
+            "similar_tasks": similar_tasks,
         }
 
     def save_graph_result(self, state: Dict) -> str:
-        task_id = self.persistent.save_task(
-            {
-                "session_id": self.session_id,
-                "image_path": state.get("image_path"),
-                "question": state.get("question"),
-                "task_type": state.get("task_type"),
-                "planner_reason": state.get("planner_reason"),
-                "vision_answer": state.get("vision_answer"),
-                "critic_decision": state.get("critic_decision"),
-                "critic_reason": state.get("critic_reason"),
-                "human_decision": state.get("human_decision"),
-                "human_feedback": state.get("human_feedback"),
-                "final_answer": state.get("final_answer"),
-            }
-        )
+        task_data = {
+            "session_id": self.session_id,
+            "image_path": state.get("image_path"),
+            "question": state.get("question"),
+            "task_type": state.get("task_type"),
+            "planner_reason": state.get("planner_reason"),
+            "vision_answer": state.get("vision_answer"),
+            "critic_decision": state.get("critic_decision"),
+            "critic_reason": state.get("critic_reason"),
+            "human_decision": state.get("human_decision"),
+            "human_feedback": state.get("human_feedback"),
+            "final_answer": state.get("final_answer"),
+        }
+
+        task_id = self.persistent.save_task(task_data)
+
+        if self.enable_vector_memory and self.vector is not None:
+            self.vector.upsert_task_embedding(
+                task_id=task_id,
+                task={
+                    **task_data,
+                    "task_id": task_id,
+                },
+            )
 
         return task_id
 
-    def _extract_keywords(self, text: str) -> List:
+    def _extract_keywords(self, text: str) -> List[str]:
         """
         简单关键词抽取。
         暂时用规则，后面可以替换成 LLM 或 embedding。
@@ -138,7 +166,7 @@ class MemoryManager:
 
         return keywords
 
-    def _deduplicate_tasks(self, tasks: List[Dict]) -> List:
+    def _deduplicate_tasks(self, tasks: List[Dict]) -> List[Dict]:
         seen = set()
         result = []
 
@@ -146,6 +174,7 @@ class MemoryManager:
             task_id = task.get("task_id")
             if task_id in seen:
                 continue
+
             seen.add(task_id)
             result.append(task)
 

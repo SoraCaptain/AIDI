@@ -118,7 +118,7 @@ class PersistentMemory:
         self,
         session_id: Optional[str] = None,
         limit: int = 5,
-    ) -> List:
+    ) -> List[Dict[str, Any]]:
         with self._connect() as conn:
             conn.row_factory = sqlite3.Row
             cursor = conn.cursor()
@@ -153,7 +153,7 @@ class PersistentMemory:
         self,
         image_path: str,
         limit: int = 5,
-    ) -> List:
+    ) -> List[Dict[str, Any]]:
         with self._connect() as conn:
             conn.row_factory = sqlite3.Row
             cursor = conn.cursor()
@@ -177,7 +177,7 @@ class PersistentMemory:
         self,
         keyword: str,
         limit: int = 5,
-    ) -> List:
+    ) -> List[Dict[str, Any]]:
         """
         简单关键词检索。
         下一课会升级为向量检索。

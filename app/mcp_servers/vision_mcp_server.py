@@ -62,7 +62,11 @@ def ask_vlm(image_path: str, question: str) -> str:
     Returns:
         Natural language answer from the VLM.
     """
-    image_url = encode_image(image_path)
+    # If it's already a URL or data URL, pass through directly
+    if image_path.startswith(("http://", "https://", "data:")):
+        image_url = image_path
+    else:
+        image_url = encode_image(image_path)
     payload = {
         "model": VLM_MODEL,
         "messages": [
