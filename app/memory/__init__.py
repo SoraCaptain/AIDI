@@ -1,0 +1,1 @@
+enable_image_vector_memory: bool = True,

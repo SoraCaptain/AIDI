@@ -103,6 +103,8 @@ async def planner_node(state: HybridVisionState) -> dict:
         
         如果长期记忆中有同一图片或类似问题的历史结果，可以在 plan 和 reason 中说明需要参考历史结果，但不要直接替代新的视觉分析。
         如果 similar_tasks 中存在高相似历史案例，可以在 plan 中说明要参考它们。但长期记忆只能作为参考，不能替代当前工具分析。
+        如果 similar_images 中存在高相似历史图片，可以在 plan 中说明要参考它们。但相似图片只能提供历史参考，不能替代当前图片分析。
+
         可选 task_type:
         - no_image: 用户没有提供图片，无法做视觉分析
         - quality_check: 用户主要关心清晰度、模糊、曝光、图像质量
@@ -150,6 +152,9 @@ async def planner_node(state: HybridVisionState) -> dict:
 
         similar_tasks:
         {memory_context.get("similar_tasks", [])}
+        
+        similar_images:
+        {memory_context.get("similar_images", [])}
         """
 
     response = await llm.ainvoke(
@@ -261,10 +266,14 @@ def make_vision_agent_node(mcp_tools):
 
             similar_tasks:
             {memory_context.get("similar_tasks", [])}
+            
+            similar_images:
+            {memory_context.get("similar_images", [])}
 
             请调用合适的 MCP 工具完成视觉分析。
             如果历史记忆与当前工具结果冲突，以当前工具结果为准，并说明差异。
             不要仅凭历史记忆判断当前图片。
+            如果引用相似图片，请明确说“历史相似图片案例显示...”，不要说成当前图片的新观察。
             """
 
         try:
@@ -367,6 +376,9 @@ async def critic_node(state: HybridVisionState) -> dict:
 
         similar_tasks:
         {memory_context.get("similar_tasks", [])}
+                
+        similar_images:
+        {memory_context.get("similar_images", [])}
 
         重试次数:
         {retry_count}
@@ -382,6 +394,7 @@ async def critic_node(state: HybridVisionState) -> dict:
         5. 是否存在明显空话、猜测或不确定表达
         6. 当前结论是否与相同图片历史结果明显冲突
         7. 当前结论是否与相似历史案例有明显冲突
+        8. 当前结论是否与图像相似历史案例明显冲突
         """
 
     response = await llm.ainvoke(
@@ -527,7 +540,12 @@ async def report_node(state: HybridVisionState) -> dict:
         请根据 Planner、Vision Agent、Critic 和人工复核结果生成最终回答。
                 
         如果引用历史记忆，请明确说明“历史记录显示...”，不要把历史记录当成当前图像的新观察结果。
-        如果引用 similar_tasks，请明确说明“相似历史案例显示...”，并区分当前工具观察和历史案例。
+        如果引用 similar_tasks，请明确说明“相似历史案例显示...”，并区分当前工具观察和历史案例。        
+        如果引用 similar_images，请明确说明“图像相似历史案例显示...”，并区分：
+        1. 当前工具观察
+        2. 文本相似历史案例
+        3. 图像相似历史案例
+        4. 人工复核结果
 
         要求:
         - 中文
@@ -577,6 +595,9 @@ async def report_node(state: HybridVisionState) -> dict:
 
         similar_tasks:
         {memory_context.get("similar_tasks", [])}
+        
+        similar_images:
+        {memory_context.get("similar_images", [])}
 
         错误:
         {state.get("error")}

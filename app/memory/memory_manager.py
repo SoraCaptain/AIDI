@@ -6,6 +6,7 @@ from typing import Optional, Dict, List
 from app.memory.session_memory import SessionMemory
 from app.memory.persistent_memory import PersistentMemory
 from app.memory.vector_memory import VectorMemory
+from app.memory.image_vector_memory import ImageVectorMemory
 
 
 class MemoryManager:
@@ -15,9 +16,8 @@ class MemoryManager:
     负责：
     - 当前会话短期记忆
     - SQLite 结构化长期记忆
-    - SQLite 向量长期记忆
-    - 为 LangGraph 提供 memory_context
-    - 保存最终任务结果
+    - 文本向量长期记忆
+    - 图像向量长期记忆
     """
 
     def __init__(
@@ -26,15 +26,22 @@ class MemoryManager:
         db_path: str = "data/memory/vision_memory.sqlite3",
         max_turns: int = 8,
         enable_vector_memory: bool = True,
+        enable_image_vector_memory: bool = True,
     ):
         self.session_id = session_id
         self.session = SessionMemory(max_turns=max_turns)
         self.persistent = PersistentMemory(db_path=db_path)
+
         self.enable_vector_memory = enable_vector_memory
+        self.enable_image_vector_memory = enable_image_vector_memory
 
         self.vector = None
         if enable_vector_memory:
             self.vector = VectorMemory(db_path=db_path)
+
+        self.image_vector = None
+        if enable_image_vector_memory:
+            self.image_vector = ImageVectorMemory(db_path=db_path)
 
     def set_current_image(self, image_path: str):
         self.session.set_image(image_path)
@@ -60,10 +67,6 @@ class MemoryManager:
         question: str,
         image_path: Optional[str],
     ) -> Dict:
-        """
-        给 LangGraph load_memory 节点使用。
-        """
-
         recent_tasks = self.persistent.get_recent_tasks(
             session_id=self.session_id,
             limit=3,
@@ -97,6 +100,26 @@ class MemoryManager:
                 min_score=0.35,
             )
 
+        similar_images = []
+        if (
+            image_path
+            and self.enable_image_vector_memory
+            and self.image_vector is not None
+        ):
+            try:
+                similar_images = self.image_vector.search_similar_images(
+                    image_path=image_path,
+                    top_k=5,
+                    min_score=0.25,
+                    exclude_same_image=True,
+                )
+            except Exception as e:
+                similar_images = [
+                    {
+                        "error": f"image similarity search failed: {repr(e)}"
+                    }
+                ]
+
         return {
             "session_id": self.session_id,
             "conversation_history": self.get_conversation_history(),
@@ -105,6 +128,7 @@ class MemoryManager:
             "same_image_tasks": same_image_tasks,
             "keyword_tasks": keyword_tasks,
             "similar_tasks": similar_tasks,
+            "similar_images": similar_images,
         }
 
     def save_graph_result(self, state: Dict) -> str:
@@ -133,14 +157,22 @@ class MemoryManager:
                 },
             )
 
+        if (
+            self.enable_image_vector_memory
+            and self.image_vector is not None
+            and task_data.get("image_path")
+        ):
+            try:
+                self.image_vector.upsert_image_embedding(
+                    task_id=task_id,
+                    image_path=task_data["image_path"],
+                )
+            except Exception as e:
+                print(f"[WARN] Failed to save image embedding: {repr(e)}")
+
         return task_id
 
-    def _extract_keywords(self, text: str) -> List[str]:
-        """
-        简单关键词抽取。
-        暂时用规则，后面可以替换成 LLM 或 embedding。
-        """
-
+    def _extract_keywords(self, text: str) -> List:
         if not text:
             return []
 
