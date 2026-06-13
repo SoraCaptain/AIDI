@@ -14,6 +14,11 @@ from app.agents.local_models import get_text_llm
 from app.mcp_clients.vision_mcp_client import load_vision_mcp_tools
 from app.memory.session_memory import SessionMemory
 from app.memory.memory_manager import MemoryManager
+from app.observability.langfuse_client import (
+    get_langfuse_handler,
+    build_trace_metadata,
+    flush_langfuse,
+)
 
 
 load_dotenv()
@@ -50,6 +55,8 @@ class HybridVisionState(TypedDict, total=False):
 
     final_answer: Optional[str]
 
+    memory_stats: Optional[Dict]
+
 
 def safe_json_loads(text: str) -> dict:
     try:
@@ -84,6 +91,13 @@ def make_load_memory_node(memory_manager):
             "conversation_history": memory_context.get("conversation_history", []),
             "last_result": memory_context.get("last_result"),
             "session_id": memory_manager.session_id,
+            "memory_stats": {
+                "recent_tasks_count": len(memory_context.get("recent_tasks", [])),
+                "same_image_tasks_count": len(memory_context.get("same_image_tasks", [])),
+                "keyword_tasks_count": len(memory_context.get("keyword_tasks", [])),
+                "similar_tasks_count": len(memory_context.get("similar_tasks", [])),
+                "similar_images_count": len(memory_context.get("similar_images", [])),
+            },
         }
 
     return load_memory_node
@@ -124,8 +138,6 @@ async def planner_node(state: HybridVisionState) -> dict:
 
     memory_context = state.get("memory_context", {})
 
-    memory_context = state.get("memory_context", {})
-
     user_prompt = f"""
         当前图片路径:
         {image_path}
@@ -161,7 +173,11 @@ async def planner_node(state: HybridVisionState) -> dict:
         [
             {"role": "system", "content": system_prompt},
             {"role": "user", "content": user_prompt},
-        ]
+        ],
+        config={
+                "run_name": "planner_llm",
+                "tags": ["planner", "routing"],
+        },
     )
 
     parsed = safe_json_loads(response.content)
@@ -276,7 +292,11 @@ def make_vision_agent_node(mcp_tools):
             如果引用相似图片，请明确说“历史相似图片案例显示...”，不要说成当前图片的新观察。
             """
 
-        try:
+        try:            
+            # Graph 有 trace
+            # 但 node 内部 create_agent 的调用没有完整 trace
+            # 在 node 内部重新创建 handler
+            handler = get_langfuse_handler()
             result = await agent.ainvoke(
                 {
                     "messages": [
@@ -285,7 +305,12 @@ def make_vision_agent_node(mcp_tools):
                             "content": user_message,
                         }
                     ]
-                }
+                },
+                config={
+                    "callbacks": [handler],
+                    "run_name": "vision_agent_with_mcp_tools",
+                    "tags": ["vision-agent", "mcp-tools"],
+                },
             )
 
             answer = result["messages"][-1].content
@@ -401,7 +426,11 @@ async def critic_node(state: HybridVisionState) -> dict:
         [
             {"role": "system", "content": system_prompt},
             {"role": "user", "content": user_prompt},
-        ]
+        ],
+        config={
+                "run_name": "critic_llm",
+                "tags": ["critic", "quality-gate"],
+            },
     )
 
     parsed = safe_json_loads(response.content)
@@ -458,6 +487,10 @@ def human_review_node(state: HybridVisionState) -> dict:
         "critic_decision": state.get("critic_decision"),
         "critic_reason": state.get("critic_reason"),
         "retry_count": state.get("retry_count", 0),
+        "observability": {
+            "event": "human_review_interrupt",
+            "reason": state.get("critic_reason"),
+        },
         "allowed_actions": [
             {
                 "action": "accept",
@@ -610,7 +643,11 @@ async def report_node(state: HybridVisionState) -> dict:
         [
             {"role": "system", "content": system_prompt},
             {"role": "user", "content": user_prompt},
-        ]
+        ],        
+        config={
+                "run_name": "report_llm",
+                "tags": ["report"],
+        },
     )
 
     return {
@@ -712,10 +749,31 @@ async def run_one_turn(app, memory_manager: MemoryManager, thread_id: str):
         "max_retries": 2,
     }
 
+    langfuse_handler = get_langfuse_handler()
+
+    trace_metadata = build_trace_metadata(
+        session_id=memory_manager.session_id,
+        thread_id=thread_id,
+        image_path=current_image_path,
+        question=question,
+        extra={
+            "has_image": str(current_image_path is not None),
+        },
+    )
+
     config = {
         "configurable": {
             "thread_id": thread_id,
-        }
+        },
+        "callbacks": [langfuse_handler],
+        "metadata": trace_metadata,
+        "tags": [
+            "vision-agent",
+            "langgraph",
+            "mcp",
+            "memory",
+            "hitl",
+        ],
     }
 
     result = await app.ainvoke(initial_state, config=config)
@@ -786,44 +844,60 @@ async def run_one_turn(app, memory_manager: MemoryManager, thread_id: str):
     print("\n保存到长期记忆 task_id:", task_id)
     print("=" * 80)
 
+    trace_summary = {
+        "task_id": task_id,
+        "task_type": result.get("task_type"),
+        "critic_decision": result.get("critic_decision"),
+        "human_decision": result.get("human_decision"),
+        "retry_count": result.get("retry_count"),
+        "memory_stats": result.get("memory_stats"),
+    }
+
+    print("\nTrace summary:")
+    print(json.dumps(trace_summary, ensure_ascii=False, indent=2))
+
     return True
 
 
 async def main():
-    mcp_client, mcp_tools = await load_vision_mcp_tools()
+    try:
+        mcp_client, mcp_tools = await load_vision_mcp_tools()
 
-    print("Loaded MCP tools:")
-    for tool in mcp_tools:
-        print(f"- {tool.name}: {tool.description[:120]}")
+        print("Loaded MCP tools:")
+        for tool in mcp_tools:
+            print(f"- {tool.name}: {tool.description[:120]}")
 
-    session_id = "vision-memory-session-001"
+        session_id = "vision-memory-session-001"
 
-    memory_manager = MemoryManager(
-        session_id=session_id,
-        db_path="data/memory/vision_memory.sqlite3",
-        max_turns=8,
-    )
-
-    app = build_hybrid_vision_graph_memory(
-        mcp_tools=mcp_tools,
-        memory_manager=memory_manager,
-    )
-
-    print("\nHybrid Vision Graph Memory v1 started.")
-    print("输入 exit 退出。")
-    print("第二轮继续分析同一张图片时，Image path 可以留空。")
-
-    thread_id = session_id
-
-    while True:
-        should_continue = await run_one_turn(
-            app=app,
-            memory_manager=memory_manager,
-            thread_id=thread_id,
+        memory_manager = MemoryManager(
+            session_id=session_id,
+            db_path="data/memory/vision_memory.sqlite3",
+            max_turns=8,
         )
 
-        if not should_continue:
-            break
+        app = build_hybrid_vision_graph_memory(
+            mcp_tools=mcp_tools,
+            memory_manager=memory_manager,
+        )
+
+        print("\nHybrid Vision Graph Memory v1 started.")
+        print("输入 exit 退出。")
+        print("第二轮继续分析同一张图片时，Image path 可以留空。")
+
+        thread_id = session_id
+
+        while True:
+            should_continue = await run_one_turn(
+                app=app,
+                memory_manager=memory_manager,
+                thread_id=thread_id,
+            )
+
+            if not should_continue:
+                break
+    finally:
+        flush_langfuse()
+
 
 if __name__ == "__main__":
     asyncio.run(main())

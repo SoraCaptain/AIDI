@@ -1,6 +1,7 @@
 # app/mcp_servers/vision_mcp_server.py
 
 import os
+import time
 import requests
 from dotenv import load_dotenv
 from mcp.server.fastmcp import FastMCP
@@ -33,14 +34,20 @@ def detect_blur(image_path: str) -> dict:
     Returns:
         A dictionary with blur_score and is_blurry.
     """
-
+    start = time.time()
     resp = requests.post(
         f"{CV_SERVER}/blur",
         params={"path": image_path},
         timeout=15,
     )
     resp.raise_for_status()
-    return resp.json()
+
+    result = resp.json()
+    result["_latency_ms"] = round((time.time() - start) * 1000, 2)
+    result["_backend"] = "cv_server"
+    result["_server"] = CV_SERVER
+
+    return result
 
 
 @mcp.tool()
@@ -67,6 +74,7 @@ def ask_vlm(image_path: str, question: str) -> str:
         image_url = image_path
     else:
         image_url = encode_image(image_path)
+    start = time.time()
     payload = {
         "model": VLM_MODEL,
         "messages": [
@@ -96,7 +104,13 @@ def ask_vlm(image_path: str, question: str) -> str:
     )
     resp.raise_for_status()
 
-    return resp.json()["choices"][0]["message"]["content"]
+    answer = resp.json()["choices"][0]["message"]["content"]
+    latency_ms = round((time.time() - start) * 1000, 2)
+
+    return (
+        f"{answer}\n\n"
+        f"[tool_metadata] backend=vlm_server "
+        f"model={VLM_MODEL} latency_ms={latency_ms} server={VLM_SERVER}")
 
 
 if __name__ == "__main__":
