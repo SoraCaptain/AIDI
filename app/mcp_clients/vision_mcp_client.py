@@ -28,7 +28,8 @@ def build_vision_mcp_client() -> MultiServerMCPClient:
                 "transport": "stdio",
             }
         },
-        tool_name_prefix=True,
+        tool_name_prefix=True,  # 可以把工具名加上 server 前缀，避免多个 MCP Server 中工具重名
+        # handle_tool_errors=True,  # 让 MCP tool 执行错误以 tool message 返回给模型，便于 agent 自我修正
     )
 
     return client
