@@ -6,11 +6,16 @@ from typing import TypedDict, Optional, List, Dict
 
 from dotenv import load_dotenv
 from langchain.agents import create_agent
+from langchain_core.messages import AIMessage, ToolMessage
 from langgraph.graph import StateGraph, START, END
 from langgraph.checkpoint.memory import InMemorySaver
 from langgraph.types import interrupt, Command
 
 from app.agents.local_models import get_text_llm
+from app.agents.single_agent import (
+    QwenToolCallParsingMiddleware,
+    ToolUsageReminderMiddleware,
+)
 from app.mcp_clients.vision_mcp_client import load_vision_mcp_tools
 from app.memory.session_memory import SessionMemory
 from app.memory.memory_manager import MemoryManager
@@ -103,12 +108,67 @@ def make_load_memory_node(memory_manager):
     return load_memory_node
 
 
+def _compress_memory_for_planner(
+    memory_context: dict,
+    conversation_history: list,
+    last_result: str | None,
+    max_items: int = 5,
+    max_len: int = 120,
+) -> str:
+    """Compress memory context into a compact prompt snippet for the planner."""
+
+    def _trunc(v, max_len=max_len) -> str:
+        s = str(v) if v else ""
+        return s[:max_len] + ("..." if len(s) > max_len else "")
+
+    def _compact_list(items: list, *keys: str, limit: int = max_items) -> str:
+        if not items:
+            return "  (无)"
+        lines = []
+        for i, item in enumerate(items[:limit]):
+            parts = " | ".join(f"{k}={_trunc(item.get(k))}" for k in keys)
+            lines.append(f"  [{i+1}] {parts}")
+        if len(items) > limit:
+            lines.append(f"  ...还有 {len(items) - limit} 条已省略")
+        return "\n".join(lines)
+
+    parts: list[str] = []
+
+    # 上一轮结果 (truncate)
+    if last_result:
+        parts.append(f"上一轮结果: {_trunc(last_result, 200)}")
+
+    # 最近对话 (last few turns)
+    conv_last = conversation_history[-6:] if conversation_history else []
+    if conv_last:
+        conv_lines = []
+        for m in conv_last:
+            role = m.get("role", "?")
+            content = _trunc(m.get("content", ""), 80)
+            conv_lines.append(f"  [{role}] {content}")
+        parts.append("最近对话:\n" + "\n".join(conv_lines))
+
+    # 长期记忆各维度
+    sections = [
+        ("recent_tasks", "question", "task_type"),
+        ("same_image_tasks", "question", "task_type"),
+        ("keyword_tasks", "question", "task_type"),
+        ("similar_tasks", "question", "task_type"),
+        ("similar_images", "question", "image_path", "task_type"),
+    ]
+    for label, *keys in sections:
+        items = memory_context.get(label, []) if memory_context else []
+        snip = _compact_list(items, *keys)
+        parts.append(f"{label}:\n{snip}")
+
+    return "\n\n".join(parts)
+
+
 async def planner_node(state: HybridVisionState) -> dict:
     llm = get_text_llm(temperature=0)
 
     image_path = state.get("image_path")
     question = state.get("question", "")
-    last_result = state.get("last_result")
 
     system_prompt = """
         你是视觉任务规划 Agent。
@@ -136,39 +196,18 @@ async def planner_node(state: HybridVisionState) -> dict:
         }
         """
 
-    memory_context = state.get("memory_context", {})
+    memory_snippet = _compress_memory_for_planner(
+        memory_context=state.get("memory_context", {}),
+        conversation_history=state.get("conversation_history", []),
+        last_result=state.get("last_result"),
+        max_items=1
+    )
 
-    user_prompt = f"""
-        当前图片路径:
-        {image_path}
+    user_prompt = f"""图片: {image_path or '(无)'}
+        问题: {question}
 
-        用户问题:
-        {question}
-
-        上一轮分析结果:
-        {last_result}
-
-        最近对话:
-        {state.get("conversation_history", [])}
-
-        长期记忆上下文:
-
-        recent_tasks:
-        {memory_context.get("recent_tasks", [])}
-
-        same_image_tasks:
-        {memory_context.get("same_image_tasks", [])}
-
-        keyword_tasks:
-        {memory_context.get("keyword_tasks", [])}
-
-        similar_tasks:
-        {memory_context.get("similar_tasks", [])}
-        
-        similar_images:
-        {memory_context.get("similar_images", [])}
-        """
-
+        {memory_snippet}"""
+    print('debug planner user_prompt', user_prompt)
     response = await llm.ainvoke(
         [
             {"role": "system", "content": system_prompt},
@@ -222,6 +261,10 @@ def make_vision_agent_node(mcp_tools):
         agent = create_agent(
             model=llm,
             tools=mcp_tools,
+            # middleware=[
+            #     QwenToolCallParsingMiddleware(),
+            #     ToolUsageReminderMiddleware(),
+            # ],
             system_prompt=f"""
                 你是一个视觉分析 Agent。
 
@@ -230,20 +273,50 @@ def make_vision_agent_node(mcp_tools):
                 当前可用工具:
                 {tool_names}
 
-                工具使用规则:
-                - 如果用户问清晰度、模糊、质量，必须调用 blur 相关工具。
-                - 如果用户问图片内容、缺陷、异常，必须调用 VLM 相关工具。
-                - 如果问题同时涉及质量和内容，两个工具都要调用。
-                - 不要假装看过图片，必须通过 MCP 工具获得视觉信息。
-                - 如果工具失败，说明失败原因。
+                工具选择规则:
+
+                1. 基础图片信息
+                - 如果需要知道图片尺寸、格式、路径是否可访问，调用 inspect_image。
+
+                2. 图像质量
+                - 如果用户问清晰度、模糊、焦点、拍摄质量，调用 detect_blur。
+
+                3. OCR / 文本
+                - 如果用户问图片中的文字、标签、序列号、仪表读数、文档内容、表格文字，调用 ocr_image。
+                - 如果 OCR 结果不清楚，可以再调用 ask_vlm 辅助解释。
+
+                4. 通用目标检测
+                - 如果用户问图中有哪些常见物体、目标位置、bbox，调用 detect_objects_yolo。
+                - YOLO 适合常见类别，不适合任意自定义缺陷。
+
+                5. 开放词汇检测
+                - 如果用户问特定对象或缺陷，例如 scratch、crack、stain、logo、screw、defect，而 YOLO 类别可能不包含，调用 grounding_detect。
+                - grounding_detect 的 text_prompt 应该使用英文短语，并用句点分隔，例如:
+                "scratch . crack . stain . defect ."
+
+                6. 分割 / 区域
+                - 如果用户问区域、轮廓、mask、面积、形状，调用 segment_with_sam。
+                - SAM 自动分割只能提供候选区域，不能直接证明区域语义，必要时结合 VLM 或 GroundingDINO。
+
+                7. 语义理解
+                - 如果用户问整体场景、异常解释、质量判断原因、综合分析，调用 ask_vlm。
+                - 不要假装看过图片，必须通过工具获得视觉信息。
+
+                8. 多工具组合
+                - 质量 + 内容：detect_blur + ask_vlm
+                - 文字 + 内容：ocr_image + ask_vlm
+                - 目标位置 + 语义：detect_objects_yolo 或 grounding_detect + ask_vlm
+                - 缺陷区域：grounding_detect + segment_with_sam + ask_vlm
+                - 不确定结果：说明不确定性，必要时建议人工复核。
 
                 回答要求:
                 - 中文回答
-                - 简洁但有依据
                 - 明确说明调用了哪些 MCP 工具
-                - 不确定时明确说明不确定性
+                - 区分“当前工具观察”和“历史相似案例”
+                - 不要编造工具没有返回的信息
+                - 如果工具失败，要说明失败原因并给出下一步建议
                 """,
-            )
+        )
 
         image_path = state.get("image_path")
         question = state.get("question", "")
@@ -313,10 +386,32 @@ def make_vision_agent_node(mcp_tools):
                 },
             )
 
+            # ── 提取最终答案 ──────────────────────────────────────────
+            # Qwen3 模型在收到工具结果后，有时会返回 content="" 的
+            # AIMessage（间歇性行为：模型认为工具输出已足够，不再总结）。
+            # 此时回退到 ToolMessage 的内容拼接。
             answer = result["messages"][-1].content
-            print('debug make vision agent node answer', answer)
+
+            if not answer:
+                # 从后往前找 ToolMessage，拼接工具返回的内容作为 fallback
+                tool_contents: list[str] = []
+                for msg in reversed(result["messages"]):
+                    if isinstance(msg, ToolMessage) and msg.content:
+                        tool_contents.append(str(msg.content))
+                    if isinstance(msg, AIMessage) and msg.content:
+                        # 遇到有内容的 AIMessage 就停（可能是中间的思考）
+                        break
+                if tool_contents:
+                    tool_contents.reverse()
+                    answer = "\n\n".join(tool_contents)
+                    answer = (
+                        "[注意：模型未生成最终总结，以下为工具直接返回的结果]\n\n"
+                        + answer
+                    )
+
+            print('debug make vision agent node answer', answer[:200] if answer else '<EMPTY>')
             return {
-                "vision_answer": answer,
+                "vision_answer": answer if answer else "[Vision Agent 未生成有效回复，请人工检查]",
                 "error": None,
             }
 
@@ -865,9 +960,9 @@ async def main():
 
         print("Loaded MCP tools:")
         for tool in mcp_tools:
-            print(f"- {tool.name}: {tool.description[:120]}")
+            print(f"- {tool.name}: {tool.description[:120]}\n{'*'*10}")
 
-        session_id = "vision-memory-session-001"
+        session_id = "vision-memory-session-002"
 
         memory_manager = MemoryManager(
             session_id=session_id,
@@ -907,4 +1002,22 @@ if __name__ == "__main__":
 # /home/ziyi/gitlocal/AIDI/test_imgs/WDLD13078D2A_03-Cam1-158-2.bmp
 # /home/ziyi/gitlocal/AIDI/test_imgs/WDLD14249F1A_04-Cam2-1150-3.bmp
 # /home/ziyi/gitlocal/AIDI/test_imgs/WDLD14439B1A_16-Cam1-1226-3.bmp
-# 这张图有没有和以前类似的缺陷？
+# 这张图有没有和以前类似的缺陷
+# /home/ziyi/gitlocal/AIDI/test_imgs/WDLD13055F1A_15-Cam1-765-4.bmp
+# 请检查图中是否有灰尘、异物，并给出位置。
+
+
+# 1. OCR:
+#    “请读取这张图里的文字。”
+
+# 2. YOLO:
+#    “请检测这张图里有哪些常见物体，并返回位置。”
+
+# 3. SAM:
+#    “请分割这张图中的主要区域，返回面积最大的几个区域。”
+
+# 4. GroundingDINO:
+#    “请检测 scratch . crack . defect . 并给出位置。”
+
+# 5. 多工具综合:
+#    “这张图是否模糊？是否有缺陷？如果有，请定位区域并结合历史相似图片说明。”
