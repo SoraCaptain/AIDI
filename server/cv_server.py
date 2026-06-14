@@ -2,26 +2,21 @@
 # uvicorn cv_server:app --host 0.0.0.0 --port 8200
 import os
 
-# Must be set BEFORE any paddle/paddlex imports to avoid:
-#   NotImplementedError: ConvertPirAttribute2RuntimeAttribute not support
-#   [pir::ArrayAttribute<pir::DoubleAttribute>]
+# NOTE: These env vars have LIMITED effect because PaddleX's
+# PaddlePredictorOption.device_type setter forcefully sets
+# FLAGS_enable_pir_api=1 at runtime. The actual fix is:
+#   1. enable_mkldnn=False in PaddleOCR() constructor
+#   2. Monkey-patch in _patch_paddlex_pir_flag()
 os.environ.setdefault("FLAGS_use_mkldnn", "0")
 os.environ.setdefault("FLAGS_enable_pir_api", "0")
 
-import base64
-import io
 import time
-import json
 from typing import Optional, List
-from urllib.parse import urlparse
 
 import cv2
-import numpy as np
-import requests
-from PIL import Image
 from fastapi import FastAPI, Query
 from pydantic import BaseModel
-
+from utils import img_path_preprocess, load_image_pil, load_image_cv2_bgr, load_image_rgb_np
 
 app = FastAPI(title="Vision CV Server", version="0.2")
 
@@ -87,44 +82,6 @@ class GroundingRequest(BaseModel):
 # Utilities
 # -----------------------------
 
-def is_url(value: str) -> bool:
-    parsed = urlparse(value)
-    return parsed.scheme in ["http", "https"]
-
-
-def is_data_url(value: str) -> bool:
-    return value.startswith("data:")
-
-
-def load_image_pil(image_path: str) -> Image.Image:
-    if is_data_url(image_path):
-        # data:image/xxx;base64,<b64>
-        _, encoded = image_path.split(",", 1)
-        img_data = base64.b64decode(encoded)
-        return Image.open(io.BytesIO(img_data)).convert("RGB")
-
-    if is_url(image_path):
-        resp = requests.get(image_path, timeout=30)
-        resp.raise_for_status()
-        return Image.open(io.BytesIO(resp.content)).convert("RGB")
-
-    if not os.path.exists(image_path):
-        raise FileNotFoundError(f"Image not found: {image_path}")
-
-    return Image.open(image_path).convert("RGB")
-
-
-def load_image_cv2_bgr(image_path: str) -> np.ndarray:
-    pil = load_image_pil(image_path)
-    rgb = np.array(pil)
-    bgr = cv2.cvtColor(rgb, cv2.COLOR_RGB2BGR)
-    return bgr
-
-
-def load_image_rgb_np(image_path: str) -> np.ndarray:
-    pil = load_image_pil(image_path)
-    return np.array(pil)
-
 
 def now_ms(start: float) -> float:
     return round((time.time() - start) * 1000, 2)
@@ -175,19 +132,60 @@ def detect_blur(req: ImageRequest):
     }
 
 
+def _patch_paddlex_pir_flag():
+    """
+    Monkey-patch PaddlePredictorOption.device_type setter to prevent it from
+    forcefully setting FLAGS_enable_pir_api=1.
+
+    Background: PaddleX 3.x sets FLAGS_enable_pir_api=1 whenever device_type
+    is set to 'cpu' or 'gpu'. This overrides any user-set env var and causes
+    PIR (Paddle Intermediate Representation) attributes that the OneDNN runtime
+    cannot convert, leading to:
+        NotImplementedError: ConvertPirAttribute2RuntimeAttribute not support
+        [pir::ArrayAttribute<pir::DoubleAttribute>]
+    """
+    from paddlex.inference.models.runners.paddle_static.config import (
+        PaddlePredictorOption,
+    )
+
+    # Only patch once
+    if getattr(PaddlePredictorOption, "_pir_patched", False):
+        return
+
+    _original_setter = PaddlePredictorOption.device_type.fset
+
+    def _patched_setter(self, device_type):
+        _original_setter(self, device_type)
+        # Revert the PIR flag that the original setter forcefully enables
+        # Only revert if the user originally wanted it disabled
+        if os.environ.get("FLAGS_enable_pir_api") == "1":
+            os.environ["FLAGS_enable_pir_api"] = "0"
+
+    PaddlePredictorOption.device_type = PaddlePredictorOption.device_type.setter(
+        _patched_setter
+    )
+    PaddlePredictorOption._pir_patched = True
+
+
 def get_ocr_model():
     global _ocr_model
 
     if _ocr_model is None:
         from paddleocr import PaddleOCR
 
-        # PaddleOCR 3.x 的参数可能随版本变化；
-        # 如果你的版本参数不同，先用 PaddleOCR() 最小初始化。
+        _patch_paddlex_pir_flag()
+
         try:
             _ocr_model = PaddleOCR(
                 use_doc_orientation_classify=False,
                 use_doc_unwarping=False,
                 use_textline_orientation=False,
+                # Disable MKLDNN to avoid PIR + OneDNN incompatibility:
+                #   NotImplementedError: ConvertPirAttribute2RuntimeAttribute
+                #   not support [pir::ArrayAttribute<pir::DoubleAttribute>]
+                # PaddleX's device_type setter forcefully sets FLAGS_enable_pir_api=1,
+                # and the OneDNN backend cannot convert PIR array attributes.
+                enable_mkldnn=False,
             )
         except Exception as e:
             raise RuntimeError(
@@ -211,7 +209,8 @@ def ocr_image(req: OCRRequest):
     start = time.time()
     ocr = get_ocr_model()
 
-    result = ocr.predict(req.image_path)
+    image_path = img_path_preprocess(req.image_path)
+    result = ocr.predict(image_path)
 
     parsed = []
 

@@ -1,11 +1,10 @@
-import base64
+
 import os
 import time
-import requests
 
 from fastapi import FastAPI
 from pydantic import BaseModel
-from urllib.parse import urlparse
+from utils import img_path_preprocess
 
 from groundingdino.util.inference import load_model, load_image, predict
 
@@ -32,15 +31,6 @@ class GroundingRequest(BaseModel):
     text_threshold: float = 0.25
 
 
-def is_url(value: str) -> bool:
-    parsed = urlparse(value)
-    return parsed.scheme in ["http", "https"]
-
-
-def is_data_url(value: str) -> bool:
-    return value.startswith("data:")
-
-
 def get_model():
     global _model
 
@@ -63,30 +53,7 @@ def health():
 def grounding_detect(req: GroundingRequest):
     start = time.time()
 
-    image_path = req.image_path
-
-    if is_data_url(image_path):
-        # data:image/xxx;base64,<b64>
-        _, encoded = image_path.split(",", 1)
-        img_data = base64.b64decode(encoded)
-
-        os.makedirs("/tmp/vision_agent", exist_ok=True)
-        tmp_path = "/tmp/vision_agent/grounding_input.jpg"
-        with open(tmp_path, "wb") as f:
-            f.write(img_data)
-        image_path = tmp_path
-
-    elif is_url(image_path):
-        os.makedirs("/tmp/vision_agent", exist_ok=True)
-        tmp_path = "/tmp/vision_agent/grounding_input.jpg"
-
-        resp = requests.get(image_path, timeout=30)
-        resp.raise_for_status()
-
-        with open(tmp_path, "wb") as f:
-            f.write(resp.content)
-
-        image_path = tmp_path
+    image_path = img_path_preprocess(req.image_path)
 
     model = get_model()
 
