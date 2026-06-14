@@ -1,3 +1,4 @@
+import base64
 import os
 import time
 import requests
@@ -36,6 +37,10 @@ def is_url(value: str) -> bool:
     return parsed.scheme in ["http", "https"]
 
 
+def is_data_url(value: str) -> bool:
+    return value.startswith("data:")
+
+
 def get_model():
     global _model
 
@@ -60,7 +65,18 @@ def grounding_detect(req: GroundingRequest):
 
     image_path = req.image_path
 
-    if is_url(image_path):
+    if is_data_url(image_path):
+        # data:image/xxx;base64,<b64>
+        _, encoded = image_path.split(",", 1)
+        img_data = base64.b64decode(encoded)
+
+        os.makedirs("/tmp/vision_agent", exist_ok=True)
+        tmp_path = "/tmp/vision_agent/grounding_input.jpg"
+        with open(tmp_path, "wb") as f:
+            f.write(img_data)
+        image_path = tmp_path
+
+    elif is_url(image_path):
         os.makedirs("/tmp/vision_agent", exist_ok=True)
         tmp_path = "/tmp/vision_agent/grounding_input.jpg"
 

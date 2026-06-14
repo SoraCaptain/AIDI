@@ -8,6 +8,7 @@ import os
 os.environ.setdefault("FLAGS_use_mkldnn", "0")
 os.environ.setdefault("FLAGS_enable_pir_api", "0")
 
+import base64
 import io
 import time
 import json
@@ -91,7 +92,17 @@ def is_url(value: str) -> bool:
     return parsed.scheme in ["http", "https"]
 
 
+def is_data_url(value: str) -> bool:
+    return value.startswith("data:")
+
+
 def load_image_pil(image_path: str) -> Image.Image:
+    if is_data_url(image_path):
+        # data:image/xxx;base64,<b64>
+        _, encoded = image_path.split(",", 1)
+        img_data = base64.b64decode(encoded)
+        return Image.open(io.BytesIO(img_data)).convert("RGB")
+
     if is_url(image_path):
         resp = requests.get(image_path, timeout=30)
         resp.raise_for_status()
