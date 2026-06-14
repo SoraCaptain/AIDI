@@ -188,10 +188,6 @@ def get_ocr_model():
                 use_doc_orientation_classify=False,
                 use_doc_unwarping=False,
                 use_textline_orientation=False,
-                # Disable MKLDNN/oneDNN to avoid PIR conversion bug in PaddlePaddle 3.3.x:
-                #   NotImplementedError: ConvertPirAttribute2RuntimeAttribute
-                #   not support [pir::ArrayAttribute<pir::DoubleAttribute>]
-                enable_mkldnn=False,
             )
         except Exception as e:
             raise RuntimeError(
