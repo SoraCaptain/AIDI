@@ -4,7 +4,6 @@ import os
 import uuid
 import shutil
 from pathlib import Path
-from typing import Optional
 
 from fastapi import (
     FastAPI,
@@ -17,7 +16,7 @@ from fastapi import (
 from fastapi.staticfiles import StaticFiles
 from fastapi.middleware.cors import CORSMiddleware
 
-from app.api.task_store import task_store
+from app.api.task_store_sqlite import task_store
 from app.api.schemas import (
     CreateTaskResponse,
     TaskStatusResponse,
@@ -25,7 +24,7 @@ from app.api.schemas import (
     HumanReviewResponse,
     ReportResponse,
 )
-from app.services.graph_runtime import graph_runtime
+from app.services.graph_runtime_persistent import graph_runtime
 from app.observability.langfuse_client import flush_langfuse
 
 
@@ -39,12 +38,12 @@ PUBLIC_BASE_URL = os.getenv(
 
 app = FastAPI(
     title="Visual Inspection Agent Gateway",
-    version="0.1.0",
+    version="0.2.0",
 )
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # 生产环境要改成你的前端域名
+    allow_origins=["*"],  # 生产环境改成你的前端域名
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -55,11 +54,19 @@ app.mount("/files", StaticFiles(directory=str(UPLOAD_DIR)), name="files")
 
 @app.on_event("startup")
 async def startup():
+    await task_store.init_db()
+
+    # 标记服务重启前未完成任务
+    await task_store.mark_unfinished_after_restart()
+    # 会把 queued和running标记成interrupted_by_restart
+    # 不改变：waiting_human、completed、 failed
+
     await graph_runtime.initialize()
 
 
 @app.on_event("shutdown")
 async def shutdown():
+    await graph_runtime.close()
     flush_langfuse()
 
 
@@ -77,11 +84,11 @@ def save_upload_file(file: UploadFile, task_id: str) -> tuple[str, str]:
 
 
 async def run_graph_background(task_id: str):
-    task = task_store.get(task_id)
+    task = await task_store.get(task_id)
     if not task:
         return
 
-    task_store.update(task_id, status="running")
+    await task_store.update(task_id, status="running")
 
     try:
         result = await graph_runtime.run_task(
@@ -91,7 +98,7 @@ async def run_graph_background(task_id: str):
             image_url=task["image_url"],
         )
 
-        task_store.update(
+        await task_store.update(
             task_id,
             status=result["status"],
             interrupt=result.get("interrupt"),
@@ -102,7 +109,7 @@ async def run_graph_background(task_id: str):
         )
 
     except Exception as e:
-        task_store.update(
+        await task_store.update(
             task_id,
             status="failed",
             error=repr(e),
@@ -114,6 +121,8 @@ def health():
     return {
         "status": "ok",
         "service": "visual-inspection-agent-gateway",
+        "task_store": "sqlite",
+        "checkpointer": "sqlite",
     }
 
 
@@ -123,19 +132,12 @@ async def create_task(
     question: str = Form(...),
     file: UploadFile = File(...),
 ):
-    """
-    创建视觉分析任务。
-
-    上传图片 + question，立即返回 task_id。
-    后台执行 LangGraph。
-    """
-
     task_id = str(uuid.uuid4())
     thread_id = f"thread-{task_id}"
 
     image_path, image_url = save_upload_file(file, task_id)
 
-    task_store.create_task(
+    await task_store.create_task(
         task_id=task_id,
         thread_id=thread_id,
         question=question,
@@ -144,11 +146,7 @@ async def create_task(
         session_id=graph_runtime.session_id,
     )
 
-    # FastAPI BackgroundTasks 会在响应发送后执行任务，
-    # 适合“先返回 task_id，再后台处理耗时流程”的场景。
     background_tasks.add_task(run_graph_background, task_id)
-
-    task_store.update(task_id, status="queued")
 
     return CreateTaskResponse(
         task_id=task_id,
@@ -159,8 +157,8 @@ async def create_task(
 
 
 @app.get("/tasks/{task_id}", response_model=TaskStatusResponse)
-def get_task_status(task_id: str):
-    task = task_store.get(task_id)
+async def get_task_status(task_id: str):
+    task = await task_store.get(task_id)
 
     if not task:
         raise HTTPException(status_code=404, detail="Task not found")
@@ -183,17 +181,7 @@ async def submit_human_review(
     task_id: str,
     req: HumanReviewRequest,
 ):
-    """
-    提交人工复核输入，恢复 LangGraph。
-
-    action:
-    - accept
-    - edit
-    - retry
-    - reject
-    """
-
-    task = task_store.get(task_id)
+    task = await task_store.get(task_id)
 
     if not task:
         raise HTTPException(status_code=404, detail="Task not found")
@@ -218,7 +206,7 @@ async def submit_human_review(
 
         resume_value["edited_answer"] = req.edited_answer
 
-    task_store.update(task_id, status="running")
+    await task_store.update(task_id, status="running")
 
     try:
         result = await graph_runtime.resume_task(
@@ -229,7 +217,7 @@ async def submit_human_review(
             resume_value=resume_value,
         )
 
-        task_store.update(
+        await task_store.update(
             task_id,
             status=result["status"],
             interrupt=result.get("interrupt"),
@@ -240,7 +228,7 @@ async def submit_human_review(
         )
 
     except Exception as e:
-        task_store.update(
+        await task_store.update(
             task_id,
             status="failed",
             error=repr(e),
@@ -248,16 +236,18 @@ async def submit_human_review(
 
         raise HTTPException(status_code=500, detail=repr(e))
 
+    updated = await task_store.get(task_id)
+
     return HumanReviewResponse(
         task_id=task_id,
-        status=task_store.get(task_id)["status"],
+        status=updated["status"],
         message="Human review submitted.",
     )
 
 
 @app.get("/tasks/{task_id}/report", response_model=ReportResponse)
-def get_report(task_id: str):
-    task = task_store.get(task_id)
+async def get_report(task_id: str):
+    task = await task_store.get(task_id)
 
     if not task:
         raise HTTPException(status_code=404, detail="Task not found")
@@ -270,7 +260,9 @@ def get_report(task_id: str):
 
 
 @app.get("/tasks")
-def list_tasks():
-    return {
-        "tasks": task_store.list_tasks()
-    }
+async def list_tasks(
+    limit: int = 50,
+    status: str | None = None,
+):
+    tasks = await task_store.list_tasks(limit=limit, status=status)
+    return {"tasks": tasks}

@@ -935,6 +935,7 @@ def route_after_human_review(state: ParallelVisionState) -> str:
 def build_parallel_multi_agent_vision_graph(
     mcp_tools,
     memory_manager: MemoryManager,
+    checkpointer=None,
 ):
     graph = StateGraph(ParallelVisionState)
 
@@ -1018,7 +1019,9 @@ def build_parallel_multi_agent_vision_graph(
     graph.add_edge("report", "save_memory")
     graph.add_edge("save_memory", END)
 
-    checkpointer = InMemorySaver()
+    
+    if checkpointer is None:
+        checkpointer = InMemorySaver()
 
     return graph.compile(checkpointer=checkpointer)
 
