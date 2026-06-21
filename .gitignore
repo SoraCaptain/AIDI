@@ -1,3 +1,5 @@
 app/__pycache__/*.pyc
 app/*/__pycache__/*.pyc
 server/__pycache__/*.pyc
+test_imgs/*.bmp
+data/*
