@@ -12,6 +12,7 @@ from langchain_core.tools import tool
 from pydantic import BaseModel, Field
 
 from app.config import settings
+from utils.utils import encode_image
 
 # ---------- 请求/响应模型（便于类型提示） ----------
 class DetectionResult(BaseModel):
@@ -116,6 +117,14 @@ async def ocr_image(image_path: str) -> str:
         return json.dumps(data, ensure_ascii=False, indent=2)
 
 
+def _resolve_image(image_path: str) -> str:
+    """If image_path is a local file, encode to base64 data URL so remote
+    servers (CV / GDINO) can access it. URLs and existing data: URIs pass
+    through unchanged."""
+    if image_path.startswith(("http://", "https://", "data:")):
+        return image_path
+    return encode_image(image_path)
+
 
 @tool
 async def vlm_understand_image(image_path: str, question: str) -> str:
@@ -135,7 +144,7 @@ async def vlm_understand_image(image_path: str, question: str) -> str:
             {
                 "role": "user",
                 "content": [
-                    {"type": "image_url", "image_url": {"url": image_path}},
+                    {"type": "image_url", "image_url": {"url": _resolve_image(image_path)}},
                     {"type": "text", "text": question}
                 ]
             }
@@ -185,10 +194,34 @@ async def detect_blur(image_path: str) -> dict:
     async with httpx.AsyncClient(timeout=settings.cv_timeout) as client:
         response = await client.post(
             f"{settings.cv_server}/blur",
+            json={"image_path": _resolve_image(image_path)}
+        )
+        response.raise_for_status()
+        return response.json()
+
+
+@tool()
+async def inspect_image(image_path: str) -> dict:
+    """
+    Inspect image metadata.
+
+    Use this tool when you need basic image information:
+    - width
+    - height
+    - mode
+    - whether the image path or URL is accessible
+
+    Args:
+        image_path: Image path or URL accessible by the CV server.
+    """
+    async with httpx.AsyncClient(timeout=settings.cv_timeout) as client:
+        response = await client.post(
+            f"{settings.cv_server}/inspect",
             json={"image_path": image_path}
         )
         response.raise_for_status()
         return response.json()
+    
     
 # ---------- 工具列表（供注册中心使用） ----------
 NATIVE_VISION_TOOLS = [
