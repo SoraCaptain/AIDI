@@ -46,49 +46,49 @@ def post_gdino(path: str, payload: dict, timeout: int = 60) -> dict:
     return resp.json()
 
 
-@mcp.tool()
-def inspect_image(image_path: str) -> dict:
-    """
-    Inspect image metadata.
+# @mcp.tool()
+# def inspect_image(image_path: str) -> dict:
+#     """
+#     Inspect image metadata.
 
-    Use this tool when you need basic image information:
-    - width
-    - height
-    - mode
-    - whether the image path or URL is accessible
+#     Use this tool when you need basic image information:
+#     - width
+#     - height
+#     - mode
+#     - whether the image path or URL is accessible
 
-    Args:
-        image_path: Image path or URL accessible by the CV server.
-    """
+#     Args:
+#         image_path: Image path or URL accessible by the CV server.
+#     """
 
-    return post_cv(
-        "/inspect",
-        {"image_path": _resolve_image(image_path)},
-        timeout=20,
-    )
+#     return post_cv(
+#         "/inspect",
+#         {"image_path": _resolve_image(image_path)},
+#         timeout=20,
+#     )
 
 
-@mcp.tool()
-def detect_blur(image_path: str) -> dict:
-    """
-    Detect whether an image is blurry.
+# @mcp.tool()
+# def detect_blur(image_path: str) -> dict:
+#     """
+#     Detect whether an image is blurry.
 
-    Use this tool when the user asks about:
-    - blur
-    - sharpness
-    - clarity
-    - focus
-    - image quality
+#     Use this tool when the user asks about:
+#     - blur
+#     - sharpness
+#     - clarity
+#     - focus
+#     - image quality
 
-    Args:
-        image_path: Image path or URL accessible by the CV server.
-    """
+#     Args:
+#         image_path: Image path or URL accessible by the CV server.
+#     """
 
-    return post_cv(
-        "/blur",
-        {"image_path": _resolve_image(image_path)},
-        timeout=20,
-    )
+#     return post_cv(
+#         "/blur",
+#         {"image_path": _resolve_image(image_path)},
+#         timeout=20,
+#     )
 
 
 @mcp.tool()
@@ -208,67 +208,67 @@ def grounding_detect(
     )
 
 
-@mcp.tool()
-def ask_vlm(image_path: str, question: str) -> str:
-    """
-    Ask the local vision-language model to analyze an image.
+# @mcp.tool()
+# def ask_vlm(image_path: str, question: str) -> str:
+#     """
+#     Ask the local vision-language model to analyze an image.
 
-    Use this tool when:
-    - the user asks about scene understanding
-    - the user asks for high-level visual reasoning
-    - OCR/detection/segmentation results need semantic explanation
-    - you need a natural language visual description
+#     Use this tool when:
+#     - the user asks about scene understanding
+#     - the user asks for high-level visual reasoning
+#     - OCR/detection/segmentation results need semantic explanation
+#     - you need a natural language visual description
 
-    Args:
-        image_path: Image path or URL accessible by the VLM server.
-        question: Detailed visual question.
+#     Args:
+#         image_path: Image path or URL accessible by the VLM server.
+#         question: Detailed visual question.
 
-    Returns:
-        Natural language answer from the VLM.
-    """
-    # If it's already a URL or data URL, pass through directly
-    if image_path.startswith(("http://", "https://", "data:")):
-        image_url = image_path
-    else:
-        image_url = encode_image(image_path)
-    start = time.time()
-    payload = {
-        "model": VLM_MODEL,
-        "messages": [
-            {
-                "role": "user",
-                "content": [
-                    {
-                        "type": "image_url",
-                        "image_url": {
-                            "url": image_url,
-                        },
-                    },
-                    {
-                        "type": "text",
-                        "text": question,
-                    },
-                ],
-            }
-        ],
-        "temperature": 0,
-    }
+#     Returns:
+#         Natural language answer from the VLM.
+#     """
+#     # If it's already a URL or data URL, pass through directly
+#     if image_path.startswith(("http://", "https://", "data:")):
+#         image_url = image_path
+#     else:
+#         image_url = encode_image(image_path)
+#     start = time.time()
+#     payload = {
+#         "model": VLM_MODEL,
+#         "messages": [
+#             {
+#                 "role": "user",
+#                 "content": [
+#                     {
+#                         "type": "image_url",
+#                         "image_url": {
+#                             "url": image_url,
+#                         },
+#                     },
+#                     {
+#                         "type": "text",
+#                         "text": question,
+#                     },
+#                 ],
+#             }
+#         ],
+#         "temperature": 0,
+#     }
 
-    resp = requests.post(
-        f"{VLM_SERVER}/v1/chat/completions",
-        json=payload,
-        timeout=120,
-    )
-    resp.raise_for_status()
+#     resp = requests.post(
+#         f"{VLM_SERVER}/v1/chat/completions",
+#         json=payload,
+#         timeout=120,
+#     )
+#     resp.raise_for_status()
 
-    answer = resp.json()["choices"][0]["message"]["content"]
-    latency_ms = round((time.time() - start) * 1000, 2)
+#     answer = resp.json()["choices"][0]["message"]["content"]
+#     latency_ms = round((time.time() - start) * 1000, 2)
 
-    return (
-        f"{answer}\n\n"
-        f"[tool_metadata] backend=vlm_server "
-        f"model={VLM_MODEL} latency_ms={latency_ms} server={VLM_SERVER}"
-    )
+#     return (
+#         f"{answer}\n\n"
+#         f"[tool_metadata] backend=vlm_server "
+#         f"model={VLM_MODEL} latency_ms={latency_ms} server={VLM_SERVER}"
+#     )
 
 
 if __name__ == "__main__":

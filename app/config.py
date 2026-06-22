@@ -45,6 +45,15 @@ class Settings(BaseSettings):
     memory_db_path: str = "data/memory/vision_memory.sqlite3"
     session_id: str = "api-gateway-session-001"
 
+    # ========== 工具调用模式配置 ==========
+    # 可选值: "mcp_only" | "native_only" | "hybrid"
+    tool_execution_mode: str = "hybrid"
+    
+    # ========== CV 服务超时配置 ==========
+    cv_timeout: int = 30
+    gdino_timeout: int = 30
+    vlm_timeout: int = 60
+
     # Pydantic 配置：自动加载 .env 文件，忽略未知字段
     model_config = SettingsConfigDict(
         env_file=".env",                # 加载 .env
