@@ -260,8 +260,10 @@ def detect_objects_yolo(req: YOLORequest):
 
     model = get_yolo_model()
 
+    image_path = img_path_preprocess(req.image_path)
+
     results = model(
-        req.image_path,
+        image_path,
         conf=req.conf,
         imgsz=req.imgsz,
         classes=req.classes,
