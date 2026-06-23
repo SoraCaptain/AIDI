@@ -54,6 +54,12 @@ class Settings(BaseSettings):
     gdino_timeout: int = 30
     vlm_timeout: int = 60
 
+    # ========== 技能系统配置 ==========
+    enable_skills: bool = True  # 是否启用复合技能
+
+    enable_md_skills: bool = True   # 是否启用基于 SKILL.md 的技能
+    md_skills_dir: str = "app/skills/md_skills"  # SKILL.md 存放目录
+
     # Pydantic 配置：自动加载 .env 文件，忽略未知字段
     model_config = SettingsConfigDict(
         env_file=".env",                # 加载 .env
