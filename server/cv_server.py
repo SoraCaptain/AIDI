@@ -17,7 +17,7 @@ import cv2
 from fastapi import FastAPI, Query
 from pydantic import BaseModel
 from utils import img_path_preprocess, load_image_pil, load_image_cv2_bgr, load_image_rgb_np
-from utils.logger import logger
+
 app = FastAPI(title="Vision CV Server", version="0.2")
 
 
@@ -223,14 +223,12 @@ def ocr_image(req: OCRRequest):
         if hasattr(res, "json"):
             try:
                 item["json"] = res.json
-                logger.debug(f"[cv_server.ocr_image] json length: {len(res.json)}")
             except Exception:
                 pass
 
         if hasattr(res, "to_dict"):
             try:
                 item["dict"] = res.to_dict()
-                logger.debug(f"[cv_server.ocr_image] dict length: {len(res.to_dict())}")
             except Exception:
                 pass
 
@@ -238,7 +236,7 @@ def ocr_image(req: OCRRequest):
             item["repr"] = repr(res)
 
         parsed.append(item)
-    logger.info(f"[cv_server.ocr_image] parsed len: {len(parsed)}")
+
     return {
         "image_path": req.image_path,
         "ocr_results": parsed,
