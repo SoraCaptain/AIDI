@@ -13,7 +13,6 @@ fastapi==0.136.3
 filelock==3.29.0
 fonttools==4.63.0
 fsspec==2026.4.0
--e git+https://github.com/IDEA-Research/GroundingDINO.git@856dde20aee659246248e20734ef9ba5214f5e44#egg=groundingdino
 h11==0.16.0
 hf-xet==1.5.1
 httpcore==1.0.9
@@ -42,7 +41,6 @@ nvidia-nccl-cu12==2.19.3
 nvidia-nvjitlink-cu12==12.9.86
 nvidia-nvtx-cu12==12.1.105
 opencv-python==4.8.1.78
-packaging @ file:///home/conda/feedstock_root/build_artifacts/bld/rattler-build_packaging_1777103621/work
 pillow==12.2.0
 platformdirs==4.10.0
 pycocotools==2.0.11
@@ -66,9 +64,6 @@ sympy==1.14.0
 timm==1.0.27
 tokenizers==0.19.1
 tomli==2.4.1
-torch==2.2.2+cu121
-torchaudio==2.2.2+cu121
-torchvision==0.17.2+cu121
 tqdm==4.68.2
 transformers==4.40.2
 triton==2.2.0

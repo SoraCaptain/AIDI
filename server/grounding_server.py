@@ -2,6 +2,7 @@
 import os
 import time
 
+import torch
 from fastapi import FastAPI
 from pydantic import BaseModel
 from utils import img_path_preprocess
@@ -59,12 +60,15 @@ def grounding_detect(req: GroundingRequest):
 
     image_source, image = load_image(image_path)
 
+    device = "cuda" if torch.cuda.is_available() else "cpu"
+
     boxes, logits, phrases = predict(
         model=model,
         image=image,
         caption=req.text_prompt,
         box_threshold=req.box_threshold,
         text_threshold=req.text_threshold,
+        device=device,
     )
 
     detections = []

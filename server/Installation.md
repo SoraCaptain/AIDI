@@ -2,6 +2,7 @@
 conda create -n cv python=3.10 -y
 conda activate cv
 
+pip install torch==2.1.0 torchvision==0.16.0 torchaudio==2.1.0 --index-url https://download.pytorch.org/whl/cu118
 pip install -r requirements_cv.txt
 
 # grouding dino server
@@ -14,7 +15,7 @@ python -m pip install -U pip setuptools wheel
 
 pip install torch==2.2.2 torchvision==0.17.2 torchaudio==2.2.2 \
   --index-url https://download.pytorch.org/whl/cu121
-
+pip install -r requirements_gdino.txt
 pip install numpy==1.26.4
 pip install opencv-python==4.8.1.78
 
@@ -32,6 +33,7 @@ cd GroundingDINO
 
 export CUDA_HOME=/usr/local/cuda-12.2
 export TORCH_CUDA_ARCH_LIST="8.9"
+pip install -e . --no-build-isolation
 
 验证安装
 python - <<'PY'
@@ -65,3 +67,29 @@ copy following model into 'weights'
 groundingdino_swint_ogc.pth
 sam_vit_b_01ec64.pth
 yolo11n.pt
+
+# Deploy on WSL2
+1. get wsl address
+
+ip addr | grep inet
+
+2. Make sure listen on 0.0.0.0
+ss -tlnp | grep 8200
+should be 0.0.0.0:8200
+
+3. Forwarded through windows
+open powershell by administration
+
+(1)
+netsh interface portproxy add v4tov4 `
+listenport=8200 `
+listenaddress=0.0.0.0 `
+connectport=8200 `
+connectaddress=172.31.144.229
+
+(2) Open firework
+New-NetFirewallRule -DisplayName "WSL 8200" `
+-Direction Inbound -LocalPort 8200 `
+-Protocol TCP -Action Allow
+
+The same to 8210
