@@ -7,6 +7,8 @@ from dotenv import load_dotenv
 from langfuse import get_client
 from langfuse.langchain import CallbackHandler
 
+from utils.logger import logger
+
 load_dotenv()
 
 
@@ -85,7 +87,7 @@ def score_trace_safe(
             comment=comment,
         )
     except Exception as e:
-        print(f"[WARN] Langfuse score failed: {repr(e)}")
+        logger.warning(f"Langfuse score failed: {repr(e)}")
 
 
 # 观测清单

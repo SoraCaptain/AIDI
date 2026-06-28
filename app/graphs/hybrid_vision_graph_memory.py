@@ -24,6 +24,7 @@ from app.observability.langfuse_client import (
     build_trace_metadata,
     flush_langfuse,
 )
+from utils.logger import logger
 
 
 load_dotenv()
@@ -207,7 +208,7 @@ async def planner_node(state: HybridVisionState) -> dict:
         问题: {question}
 
         {memory_snippet}"""
-    print('debug planner user_prompt', user_prompt)
+    logger.debug('debug planner user_prompt %s', user_prompt)
     response = await llm.ainvoke(
         [
             {"role": "system", "content": system_prompt},
@@ -409,7 +410,7 @@ def make_vision_agent_node(mcp_tools):
                         + answer
                     )
 
-            print('debug make vision agent node answer', answer[:200] if answer else '<EMPTY>')
+            logger.debug('debug make vision agent node answer %s', answer[:200] if answer else '<EMPTY>')
             return {
                 "vision_answer": answer if answer else "[Vision Agent 未生成有效回复，请人工检查]",
                 "error": None,
@@ -877,16 +878,16 @@ async def run_one_turn(app, memory_manager: MemoryManager, thread_id: str):
         interrupts = result["__interrupt__"]
         interrupt_value = interrupts[0].value
 
-        print("\n" + "=" * 80)
-        print("需要人工复核：")
-        print(json.dumps(interrupt_value, ensure_ascii=False, indent=2))
-        print("=" * 80)
+        logger.info("\n" + "=" * 80)
+        logger.info("需要人工复核：")
+        logger.info(json.dumps(interrupt_value, ensure_ascii=False, indent=2))
+        logger.info("=" * 80)
 
-        print("\n请选择人工动作：")
-        print("1. accept  - 接受当前结果")
-        print("2. edit    - 修改结果")
-        print("3. retry   - 带反馈重试")
-        print("4. reject  - 拒绝当前分析")
+        logger.info("\n请选择人工动作：")
+        logger.info("1. accept  - 接受当前结果")
+        logger.info("2. edit    - 修改结果")
+        logger.info("3. retry   - 带反馈重试")
+        logger.info("4. reject  - 拒绝当前分析")
 
         action = input("Action: ").strip()
 
@@ -934,10 +935,10 @@ async def run_one_turn(app, memory_manager: MemoryManager, thread_id: str):
 
     memory_manager.add_assistant_message(final_answer)
 
-    print("\n" + "=" * 80)
-    print(final_answer)
-    print("\n保存到长期记忆 task_id:", task_id)
-    print("=" * 80)
+    logger.info("\n" + "=" * 80)
+    logger.info(final_answer)
+    logger.info(f"\n保存到长期记忆 task_id: {task_id}")
+    logger.info("=" * 80)
 
     trace_summary = {
         "task_id": task_id,
@@ -948,8 +949,8 @@ async def run_one_turn(app, memory_manager: MemoryManager, thread_id: str):
         "memory_stats": result.get("memory_stats"),
     }
 
-    print("\nTrace summary:")
-    print(json.dumps(trace_summary, ensure_ascii=False, indent=2))
+    logger.info("\nTrace summary:")
+    logger.info(json.dumps(trace_summary, ensure_ascii=False, indent=2))
 
     return True
 
@@ -958,9 +959,9 @@ async def main():
     try:
         mcp_client, mcp_tools = await load_vision_mcp_tools()
 
-        print("Loaded MCP tools:")
+        logger.info("Loaded MCP tools:")
         for tool in mcp_tools:
-            print(f"- {tool.name}: {tool.description[:120]}\n{'*'*10}")
+            logger.info(f"- {tool.name}: {tool.description[:120]}\n{'*' * 10}")
 
         session_id = "vision-memory-session-002"
 
@@ -975,9 +976,9 @@ async def main():
             memory_manager=memory_manager,
         )
 
-        print("\nHybrid Vision Graph Memory v1 started.")
-        print("输入 exit 退出。")
-        print("第二轮继续分析同一张图片时，Image path 可以留空。")
+        logger.info("\nHybrid Vision Graph Memory v1 started.")
+        logger.info("输入 exit 退出。")
+        logger.info("第二轮继续分析同一张图片时，Image path 可以留空。")
 
         thread_id = session_id
 

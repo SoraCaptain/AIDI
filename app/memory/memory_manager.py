@@ -7,6 +7,7 @@ from app.memory.session_memory import SessionMemory
 from app.memory.persistent_memory import PersistentMemory
 from app.memory.vector_memory import VectorMemory
 from app.memory.image_vector_memory import ImageVectorMemory
+from utils.logger import logger
 
 
 class MemoryManager:
@@ -110,7 +111,7 @@ class MemoryManager:
                 similar_images = self.image_vector.search_similar_images(
                     image_path=image_path,
                     top_k=5,
-                    min_score=0.25,
+                    min_score=0.75,
                     exclude_same_image=True,
                 )
             except Exception as e:
@@ -168,7 +169,7 @@ class MemoryManager:
                     image_path=task_data["image_path"],
                 )
             except Exception as e:
-                print(f"[WARN] Failed to save image embedding: {repr(e)}")
+                logger.warning(f"Failed to save image embedding: {repr(e)}")
 
         return task_id
 

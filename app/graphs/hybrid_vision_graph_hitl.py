@@ -13,6 +13,7 @@ from langgraph.types import interrupt, Command
 from app.agents.local_models import get_text_llm
 from app.mcp_clients.vision_mcp_client import load_vision_mcp_tools
 from app.memory.session_memory import SessionMemory
+from utils.logger import logger
 
 load_dotenv()
 
@@ -219,7 +220,7 @@ def make_vision_agent_node(mcp_tools):
             )
 
             answer = result["messages"][-1].content
-            print('debug make vision agent node answer', answer)
+            logger.debug('debug make vision agent node answer %s', answer)
             return {
                 "vision_answer": answer,
                 "error": None,
@@ -591,16 +592,16 @@ async def run_one_turn(app, memory: SessionMemory, thread_id: str):
         interrupts = result["__interrupt__"]
         interrupt_value = interrupts[0].value
 
-        print("\n" + "=" * 80)
-        print("需要人工复核：")
-        print(json.dumps(interrupt_value, ensure_ascii=False, indent=2))
-        print("=" * 80)
+        logger.info("\n" + "=" * 80)
+        logger.info("需要人工复核：")
+        logger.info(json.dumps(interrupt_value, ensure_ascii=False, indent=2))
+        logger.info("=" * 80)
 
-        print("\n请选择人工动作：")
-        print("1. accept  - 接受当前结果")
-        print("2. edit    - 修改结果")
-        print("3. retry   - 带反馈重试")
-        print("4. reject  - 拒绝当前分析")
+        logger.info("\n请选择人工动作：")
+        logger.info("1. accept  - 接受当前结果")
+        logger.info("2. edit    - 修改结果")
+        logger.info("3. retry   - 带反馈重试")
+        logger.info("4. reject  - 拒绝当前分析")
 
         action = input("Action: ").strip()
 
@@ -648,9 +649,9 @@ async def run_one_turn(app, memory: SessionMemory, thread_id: str):
     memory.add_message("assistant", final_answer)
     memory.set_last_result(final_answer)
 
-    print("\n" + "=" * 80)
-    print(final_answer)
-    print("=" * 80)
+    logger.info("\n" + "=" * 80)
+    logger.info(final_answer)
+    logger.info("=" * 80)
 
     return True
 
@@ -658,16 +659,16 @@ async def run_one_turn(app, memory: SessionMemory, thread_id: str):
 async def main():
     mcp_client, mcp_tools = await load_vision_mcp_tools()
 
-    print("Loaded MCP tools:")
+    logger.info("Loaded MCP tools:")
     for tool in mcp_tools:
-        print(f"- {tool.name}: {tool.description[:120]}")
+        logger.info(f"- {tool.name}: {tool.description[:120]}")
 
     app = build_hybrid_vision_graph_hitl(mcp_tools)
     memory = SessionMemory(max_turns=8)
 
-    print("\nHybrid Vision Graph HITL v1 started.")
-    print("输入 exit 退出。")
-    print("第二轮继续分析同一张图片时，Image path 可以留空。")
+    logger.info("\nHybrid Vision Graph HITL v1 started.")
+    logger.info("输入 exit 退出。")
+    logger.info("第二轮继续分析同一张图片时，Image path 可以留空。")
 
     # 开发阶段固定一个 thread_id。
     # 生产环境应该按 user_id + session_id + task_id 生成。

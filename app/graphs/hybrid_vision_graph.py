@@ -10,6 +10,7 @@ from langgraph.graph import StateGraph, START, END
 from app.agents.local_models import get_text_llm
 from app.tools.langchain_vision_tools import detect_blur, ask_vlm
 from app.memory.session_memory import SessionMemory
+from utils.logger import logger
 
 load_dotenv()
 
@@ -49,7 +50,7 @@ def safe_json_loads(text: str) -> dict:
     尽量从模型输出中解析 JSON。
     如果失败，返回空 dict。
     """
-    print("-> log: safe_json_loads")
+    logger.debug("-> log: safe_json_loads")
     try:
         return json.loads(text)
     except Exception:
@@ -72,7 +73,7 @@ def planner_node(state: HybridVisionState) -> dict:
     Planner Agent:
     判断用户问题属于哪类任务。
     """
-    print("-> log: planner node")
+    logger.debug("-> log: planner node")
     llm = get_text_llm(temperature=0)
 
     image_path = state.get("image_path")
@@ -147,7 +148,7 @@ def planner_node(state: HybridVisionState) -> dict:
 
 def route_after_planner(state: HybridVisionState) -> str:
     task_type = state.get("task_type")
-    print("-> log: route_after_planner", task_type)
+    logger.debug(f"-> log: route_after_planner {task_type}")
     if task_type == "no_image":
         return "report"
 
@@ -162,7 +163,7 @@ def vision_agent_node(state: HybridVisionState) -> dict:
     Vision Agent:
     使用 LangChain create_agent，自动调用视觉工具。
     """
-    print("-> log: vision agent node")
+    logger.debug("-> log: vision agent node")
     llm = get_text_llm(temperature=0)
 
     agent = create_agent(
@@ -245,7 +246,7 @@ def critic_node(state: HybridVisionState) -> dict:
     Critic:
     判断 Vision Agent 输出是否可用。
     """
-    print("-> log: critic node")
+    logger.debug("-> log: critic node")
     llm = get_text_llm(temperature=0)
 
     question = state.get("question", "")
@@ -335,7 +336,7 @@ def route_after_critic(state: HybridVisionState) -> str:
     # Critic 后的路由
     
     decision = state.get("critic_decision")
-    print("-> log: route_after_critic", decision)
+    logger.debug(f"-> log: route_after_critic {decision}")
     if decision == "retry":
         return "vision_agent"
 
@@ -344,7 +345,7 @@ def route_after_critic(state: HybridVisionState) -> str:
 
 def increment_retry_node(state: HybridVisionState) -> dict:
     retry_count = state.get("retry_count", 0)
-    print("-> log: increment_retry_node: ", retry_count)
+    logger.debug(f"-> log: increment_retry_node: {retry_count}")
     return {
         "retry_count": retry_count + 1
     }
@@ -355,7 +356,7 @@ def report_node(state: HybridVisionState) -> dict:
     Report Agent:
     生成最终用户可读报告。
     """
-    print("-> log: report node")
+    logger.debug("-> log: report node")
     llm = get_text_llm(temperature=0)
 
     system_prompt = """
@@ -476,9 +477,9 @@ if __name__ == "__main__":
     app = build_hybrid_vision_graph()
     memory = SessionMemory(max_turns=8)
 
-    print("Hybrid Vision Graph v1 started.")
-    print("输入 exit 退出。")
-    print("第二轮继续分析同一张图片时，Image path 可以留空。")
+    logger.info("Hybrid Vision Graph v1 started.")
+    logger.info("输入 exit 退出。")
+    logger.info("第二轮继续分析同一张图片时，Image path 可以留空。")
 
     while True:
         image_path = input("\nImage path, empty if same as before: ").strip()
@@ -514,9 +515,9 @@ if __name__ == "__main__":
         memory.add_message("assistant", final_answer)
         memory.set_last_result(final_answer)
 
-        print("\n" + "=" * 80)
-        print(final_answer)
-        print("=" * 80)
+        logger.info("\n" + "=" * 80)
+        logger.info(final_answer)
+        logger.info("=" * 80)
 
 
 # /home/ziyi/gitlocal/AIDI/test_imgs/blur.png

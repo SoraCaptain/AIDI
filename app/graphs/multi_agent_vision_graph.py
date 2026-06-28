@@ -23,6 +23,7 @@ from app.observability.langfuse_client import (
     build_trace_metadata,
     flush_langfuse,
 )
+from utils.logger import logger
 
 load_dotenv()
 
@@ -1051,16 +1052,16 @@ async def run_one_turn(app, memory_manager: MemoryManager, thread_id: str):
     while "__interrupt__" in result:
         interrupt_value = result["__interrupt__"][0].value
 
-        print("\n" + "=" * 80)
-        print("需要人工复核：")
-        print(json.dumps(interrupt_value, ensure_ascii=False, indent=2))
-        print("=" * 80)
+        logger.info("\n" + "=" * 80)
+        logger.info("需要人工复核：")
+        logger.info(json.dumps(interrupt_value, ensure_ascii=False, indent=2))
+        logger.info("=" * 80)
 
-        print("\n请选择人工动作：")
-        print("1. accept")
-        print("2. edit")
-        print("3. retry")
-        print("4. reject")
+        logger.info("\n请选择人工动作：")
+        logger.info("1. accept")
+        logger.info("2. edit")
+        logger.info("3. retry")
+        logger.info("4. reject")
 
         action = input("Action: ").strip()
 
@@ -1104,13 +1105,13 @@ async def run_one_turn(app, memory_manager: MemoryManager, thread_id: str):
 
     memory_manager.add_assistant_message(final_answer)
 
-    print("\n" + "=" * 80)
-    print(final_answer)
-    print("\n保存到长期记忆 task_id:", task_id)
-    print("=" * 80)
+    logger.info("\n" + "=" * 80)
+    logger.info(final_answer)
+    logger.info(f"\n保存到长期记忆 task_id: {task_id}")
+    logger.info("=" * 80)
 
-    print("\nTrace summary:")
-    print(
+    logger.info("\nTrace summary:")
+    logger.info(
         json.dumps(
             {
                 "required_agents": result.get("required_agents"),
@@ -1131,9 +1132,9 @@ async def main():
     try:
         mcp_client, mcp_tools = await load_vision_mcp_tools()
 
-        print("Loaded MCP tools:")
+        logger.info("Loaded MCP tools:")
         for tool in mcp_tools:
-            print(f"- {tool.name}: {tool.description[:100]}")
+            logger.info(f"- {tool.name}: {tool.description[:100]}")
 
         session_id = "multi-agent-vision-session-001"
 
@@ -1150,8 +1151,8 @@ async def main():
             memory_manager=memory_manager,
         )
 
-        print("\nMulti-Agent Vision Graph started.")
-        print("输入 exit 退出。")
+        logger.info("\nMulti-Agent Vision Graph started.")
+        logger.info("输入 exit 退出。")
 
         thread_id = session_id
 

@@ -3,3 +3,7 @@ app/*/__pycache__/*.pyc
 server/__pycache__/*.pyc
 test_imgs/*.bmp
 data/*
+tests/__pycache__/*.pyc
+utils/__pycache__/*.pyc
+*.log
+app/skills/builtin/__pycache__/vision_composer.cpython-314.pyc

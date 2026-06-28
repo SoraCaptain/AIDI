@@ -7,6 +7,8 @@
 from huggingface_hub import snapshot_download
 import os
 
+from utils.logger import logger
+
 # 如果你想把 token 写死，可改为 token="hf_xxx"
 local_dir = "/srv/new_storage/ziyi/other/pretrained_models/huggingface/Ultralytics/YOLO11"
 os.makedirs(local_dir, exist_ok=True)
@@ -20,4 +22,4 @@ snapshot_download(
     max_workers=8
 )
 
-print("全部文件已下载到：", os.path.abspath(local_dir))
+logger.info("全部文件已下载到：" + os.path.abspath(local_dir))

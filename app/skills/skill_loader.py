@@ -7,6 +7,8 @@ import frontmatter
 from pathlib import Path
 from typing import Dict, List, Optional, Any
 
+from utils.logger import logger
+
 
 class SkillLoader:
     """
@@ -23,7 +25,7 @@ class SkillLoader:
         返回索引字典，同时存储到 self.index
         """
         if not self.skills_dir.exists():
-            print(f"⚠️  SKILLs 目录不存在: {self.skills_dir}")
+            logger.warning(f"⚠️  SKILLs 目录不存在: {self.skills_dir}")
             return {}
 
         self.index = {}
@@ -39,7 +41,7 @@ class SkillLoader:
                     post = frontmatter.load(f)
                     name = post.get('name')
                     if not name:
-                        print(f"⚠️  跳过 {skill_file}：缺少 name 字段")
+                        logger.warning(f"⚠️  跳过 {skill_file}：缺少 name 字段")
                         continue
 
                     self.index[name] = {
@@ -50,9 +52,9 @@ class SkillLoader:
                         "body": post.content,  # 暂不保存全文，节省内存
                     }
             except Exception as e:
-                print(f"⚠️  解析 {skill_file} 失败: {e}")
+                logger.warning(f"⚠️  解析 {skill_file} 失败: {e}")
 
-        print(f"✅ 加载了 {len(self.index)} 个 MD 技能")
+        logger.info(f"✅ 加载了 {len(self.index)} 个 MD 技能")
         return self.index
 
     def get_skill_info(self, skill_name: str) -> Optional[Dict[str, Any]]:
@@ -71,7 +73,7 @@ class SkillLoader:
             with open(skill_path, 'r', encoding='utf-8') as f:
                 return f.read()
         except Exception as e:
-            print(f"⚠️  读取 {skill_path} 失败: {e}")
+            logger.warning(f"⚠️  读取 {skill_path} 失败: {e}")
             return None
 
     def get_all_skills(self) -> List[Dict[str, Any]]:

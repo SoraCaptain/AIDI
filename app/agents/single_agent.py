@@ -11,6 +11,8 @@ from langchain_core.messages import AIMessage, BaseMessage
 from langchain_core.tools import tool
 from langchain_openai import ChatOpenAI
 
+from utils.logger import logger
+
 load_dotenv()
 
 
@@ -204,4 +206,4 @@ if __name__ == "__main__":
         }
     )
 
-    print("Final answer:", result["messages"][-1].content)
+    logger.info(f"Final answer: {result["messages"][-1].content}")

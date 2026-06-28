@@ -17,6 +17,7 @@ from app.observability.langfuse_client import (
 )
 # ⬇️ 新增导入配置单例
 from app.config import settings as app_settings
+from utils.logger import logger
 
 
 class PersistentGraphRuntime:
@@ -72,7 +73,7 @@ class PersistentGraphRuntime:
         
         # 获取合并后的工具列表
         all_tools = self.tool_registry.get_tools()
-        print(f"🔧 最终可用工具: {len(all_tools)} 个 (模式: {self.tool_registry.get_mode()})")
+        logger.info(f"🔧 最终可用工具: {len(all_tools)} 个 (模式: {self.tool_registry.get_mode()})")
 
         # 为了保持兼容性，仍然保留 mcp_client 引用（如果存在）
         self.mcp_client = self.tool_registry._mcp_client
@@ -89,16 +90,16 @@ class PersistentGraphRuntime:
         # ---------- 检查点后端选择 ----------
         if self.use_postgres:
             try:
-                print(f"🐘 正在连接 PostgreSQL: {self.postgres_uri.split('@')[-1]}")
+                logger.info(f"🐘 正在连接 PostgreSQL: {self.postgres_uri.split('@')[-1]}")
                 self._checkpointer_cm = AsyncPostgresSaver.from_conn_string(
                     self.postgres_uri
                 )
                 self.checkpointer = await self._checkpointer_cm.__aenter__()
                 await self.checkpointer.setup()
-                print("✅ PostgreSQL 检查点已就绪")
+                logger.info("✅ PostgreSQL 检查点已就绪")
             except Exception as e:
-                print(f"⚠️  PostgreSQL 连接失败: {e}")
-                print("🔄 自动降级到 SQLite")
+                logger.warning(f"⚠️  PostgreSQL 连接失败: {e}")
+                logger.info("🔄 自动降级到 SQLite")
                 self.use_postgres = False
                 self._checkpointer_cm = AsyncSqliteSaver.from_conn_string(
                     self.checkpoint_db_path
@@ -109,7 +110,7 @@ class PersistentGraphRuntime:
                 self.checkpoint_db_path
             )
             self.checkpointer = await self._checkpointer_cm.__aenter__()
-            print(f"✅ SQLite 检查点已就绪: {self.checkpoint_db_path}")
+            logger.info(f"✅ SQLite 检查点已就绪: {self.checkpoint_db_path}")
 
         self.app = build_parallel_multi_agent_vision_graph(
             mcp_tools=self.mcp_tools,  # 这里传的是所有工具

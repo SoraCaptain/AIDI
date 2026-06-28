@@ -4,6 +4,7 @@
 from typing import Dict, List, Type, Optional
 from app.skills.base import BaseSkill
 from app.skills.builtin.vision_composer import ComprehensiveAnalysisSkill
+from utils.logger import logger
 
 
 class SkillRegistry:
@@ -26,14 +27,14 @@ class SkillRegistry:
         # 未来可以继续注册: self.register(DocumentParsingSkill())
         # self.register(ImageCaptioningSkill())
 
-        print(f"✅ 技能注册完成: 共 {len(self._skills)} 个技能")
+        logger.info(f"✅ 技能注册完成: 共 {len(self._skills)} 个技能")
         for name in self._skills:
-            print(f"   - {name}")
+            logger.info(f"   - {name}")
 
     def register(self, skill: BaseSkill):
         """注册一个技能"""
         if skill.name in self._skills:
-            print(f"⚠️  技能 {skill.name} 已存在，将被覆盖")
+            logger.warning(f"⚠️  技能 {skill.name} 已存在，将被覆盖")
         self._skills[skill.name] = skill
 
     def get_skill(self, name: str) -> Optional[BaseSkill]:

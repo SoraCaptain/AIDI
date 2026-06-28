@@ -3,6 +3,7 @@ import pytest
 import asyncio
 from app.skills.builtin.vision_composer import ComprehensiveAnalysisSkill
 from app.skills.registry import SkillRegistry
+from utils.logger import logger
 
 @pytest.mark.asyncio
 async def test_comprehensive_skill():
@@ -16,7 +17,7 @@ async def test_comprehensive_skill():
     
     assert result.success is True
     assert "report" in result.result
-    print(result.result["report"])  # 打印生成的 Markdown 报告
+    logger.info(result.result["report"])  # 打印生成的 Markdown 报告
 
 @pytest.mark.asyncio
 async def test_skill_registry_tools():
@@ -26,4 +27,4 @@ async def test_skill_registry_tools():
     assert len(tools) >= 1
     tool_names = [t.name for t in tools]
     assert "comprehensive_image_analysis" in tool_names
-    print(f"✅ 技能工具列表: {tool_names}")
+    logger.info(f"✅ 技能工具列表: {tool_names}")

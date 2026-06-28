@@ -15,6 +15,7 @@ dependencies = [
     "langgraph>=1.2.4",
     "langgraph-checkpoint-postgres>=3.1.0",
     "langgraph-checkpoint-sqlite>=3.1.0",
+    "loguru>=0.7.3",
     "mcp>=1.27.2",
     "numpy>=2.4.6",
     "opencv-python>=4.13.0.92",

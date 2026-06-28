@@ -1,4 +1,5 @@
 from app.memory.vector_memory import VectorMemory
+from utils.logger import logger
 
 vm = VectorMemory(db_path="data/memory/vision_memory.sqlite3")
 
@@ -9,8 +10,8 @@ results = vm.search_similar_tasks(
 )
 
 for item in results:
-    print("=" * 80)
-    print("score:", item["similarity_score"])
-    print("task_id:", item["task_id"])
-    print("question:", item["question"])
-    print("final_answer:", item["final_answer"][:300] if item["final_answer"] else None)
+    logger.info("=" * 80)
+    logger.info(f"score: {item["similarity_score"]}")
+    logger.info(f"task_id: {item["task_id"]}")
+    logger.info(f"question: {item["question"]}")
+    logger.info(f"final_answer: {item["final_answer"][:300] if item["final_answer"] else None}")

@@ -1,4 +1,5 @@
 from app.memory.image_vector_memory import ImageVectorMemory
+from utils.logger import logger
 
 ivm = ImageVectorMemory(db_path="data/memory/vision_memory.sqlite3")
 
@@ -9,9 +10,9 @@ results = ivm.search_similar_images(
 )
 
 for item in results:
-    print("=" * 80)
-    print("score:", item["image_similarity_score"])
-    print("image_path:", item["image_path"])
-    print("task_id:", item["task_id"])
-    print("question:", item["question"])
-    print("final_answer:", item["final_answer"][:300] if item["final_answer"] else None)
+    logger.info("=" * 80)
+    logger.info(f"score: {item["image_similarity_score"]}")
+    logger.info(f"image_path: {item["image_path"]}")
+    logger.info(f"task_id: {item["task_id"]}")
+    logger.info(f"question: {item["question"]}")
+    logger.info(f"final_answer: {item["final_answer"][:300] if item["final_answer"] else None}")

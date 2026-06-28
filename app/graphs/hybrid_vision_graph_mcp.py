@@ -11,6 +11,7 @@ from langgraph.graph import StateGraph, START, END
 from app.agents.local_models import get_text_llm
 from app.mcp_clients.vision_mcp_client import load_vision_mcp_tools
 from app.memory.session_memory import SessionMemory
+from utils.logger import logger
 
 load_dotenv()
 
@@ -418,17 +419,17 @@ def build_hybrid_vision_graph_mcp(mcp_tools):
 async def main():
     mcp_client, mcp_tools = await load_vision_mcp_tools()
 
-    print("Loaded MCP tools:")
+    logger.info("Loaded MCP tools:")
     for tool in mcp_tools:
-        print(f"- {tool.name}: {tool.description[:120]}")
-        print("*"*40)
+        logger.info(f"- {tool.name}: {tool.description[:120]}")
+        logger.info("*" * 40)
 
     app = build_hybrid_vision_graph_mcp(mcp_tools)
     memory = SessionMemory(max_turns=8)
 
-    print("\nHybrid Vision Graph MCP v1 started.")
-    print("输入 exit 退出。")
-    print("第二轮继续分析同一张图片时，Image path 可以留空。")
+    logger.info("\nHybrid Vision Graph MCP v1 started.")
+    logger.info("输入 exit 退出。")
+    logger.info("第二轮继续分析同一张图片时，Image path 可以留空。")
 
     while True:
         image_path = input("\nImage path, empty if same as before: ").strip()
@@ -464,9 +465,9 @@ async def main():
         memory.add_message("assistant", final_answer)
         memory.set_last_result(final_answer)
 
-        print("\n" + "=" * 80)
-        print(final_answer)
-        print("=" * 80)
+        logger.info("\n" + "=" * 80)
+        logger.info(final_answer)
+        logger.info("=" * 80)
 
 
 if __name__ == "__main__":

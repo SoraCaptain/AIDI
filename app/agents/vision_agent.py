@@ -7,6 +7,7 @@ from langchain_openai import ChatOpenAI
 from app.tools.cv_tools import detect_blur
 from app.tools.vlm_tools import ask_vlm
 from app.memory.short_memory import ShortMemory
+from utils.logger import logger
 
 
 load_dotenv()
@@ -48,7 +49,7 @@ class VisionAgent:
     def chat(self, user_input: str, image_path: str | None = None):
         if image_path:
             if os.path.isfile(image_path) and os.path.splitext(image_path)[1] in ['.bmp', '.png', '.jpg', '.jpeg']:
-                print('valid image path', image_path)
+                logger.debug('valid image path %s', image_path)
                 self.memory.set_image(image_path)
             else:
                 return "Not a valid image path"
@@ -62,7 +63,7 @@ class VisionAgent:
             )
 
         self.memory.add("user", user_input)
-        print("debug message:", self.memory.get_messages())
+        logger.debug(f"debug message: {self.memory.get_messages()}")
         response = self.agent.invoke({
             "messages": self.memory.get_messages()
         })
@@ -76,9 +77,9 @@ class VisionAgent:
 if __name__ == "__main__":
     agent = VisionAgent()
 
-    print("Vision Agent started.")
-    print("输入图片路径和问题。第二轮如果继续问同一张图，image path 可以留空。")
-    print("输入 exit 退出。")
+    logger.info("Vision Agent started.")
+    logger.info("输入图片路径和问题。第二轮如果继续问同一张图，image path 可以留空。")
+    logger.info("输入 exit 退出。")
 
     # question = "这张图模糊吗"
     # image_path = "/home/ziyi/gitlocal/AIDI/dog.jpg"
@@ -102,7 +103,7 @@ if __name__ == "__main__":
 
         answer = agent.chat(question, image_path=image_path)
 
-        print("\nAssistant:")
-        print(answer)
+        logger.info("\nAssistant:")
+        logger.info(answer)
 
 # /srv/new_storage/ziyi/Sunny/dataset/test_set/20251121_test_data/NG-2-ID1043901229953974272-R00-C01-72803B6903748506/over2/index000.png

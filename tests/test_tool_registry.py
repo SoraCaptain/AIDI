@@ -2,6 +2,7 @@
 import pytest
 from app.tools.tool_registry import ToolRegistry
 from app.tools.native_vision_tools import NATIVE_TOOL_NAMES
+from utils.logger import logger
 
 
 @pytest.mark.asyncio
@@ -16,7 +17,7 @@ async def test_native_only_mode():
     tool_names = {t.name for t in tools}
     assert "detect_blur" in tool_names
     assert "vlm_understand_image" in tool_names
-    print(f"✅ native_only 模式加载了 {len(tools)} 个工具")
+    logger.info(f"✅ native_only 模式加载了 {len(tools)} 个工具")
     await registry.close()
 
 
@@ -30,5 +31,5 @@ async def test_hybrid_mode():
     tool_names = {t.name for t in tools}
     assert "detect_blur" in tool_names
     # 如果有 MCP 服务运行，这里会更多
-    print(f"✅ hybrid 模式加载了 {len(tools)} 个工具")
+    logger.info(f"✅ hybrid 模式加载了 {len(tools)} 个工具")
     await registry.close()

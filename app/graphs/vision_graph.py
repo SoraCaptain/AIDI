@@ -26,6 +26,7 @@ from langgraph.graph import StateGraph, START, END
 
 from app.tools.cv_api import detect_blur_api
 from app.tools.vlm_api import ask_vlm_api
+from utils.logger import logger
 
 
 load_dotenv()
@@ -400,8 +401,8 @@ def build_vision_graph():
 if __name__ == "__main__":
     app = build_vision_graph()
 
-    print("Vision Graph v1 started.")
-    print("输入 exit 退出。")
+    logger.info("Vision Graph v1 started.")
+    logger.info("输入 exit 退出。")
 
     current_image_path = None
 
@@ -429,8 +430,8 @@ if __name__ == "__main__":
             }
         )
 
-        print("\n" + "=" * 80)
-        print(result["final_answer"])
-        print("=" * 80)
+        logger.info("\n" + "=" * 80)
+        logger.info(result["final_answer"])
+        logger.info("=" * 80)
         
 # /home/ziyi/gitlocal/AIDI/test_imgs/train01.png

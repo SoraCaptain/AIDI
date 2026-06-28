@@ -17,6 +17,7 @@ from app.tools.native_vision_tools import NATIVE_VISION_TOOLS
 from app.skills.registry import SkillRegistry
 from app.skills.skill_loader import SkillLoader
 from app.skills.md_skill_adapter import load_all_md_skills
+from utils.logger import logger
 
 
 class ToolRegistry:
@@ -45,15 +46,15 @@ class ToolRegistry:
                 client, tools = await load_vision_mcp_tools()
                 self._mcp_client = client
                 self._mcp_tools = tools
-                print(f"✅ MCP 工具加载完成: {len(tools)} 个")
+                logger.info(f"✅ MCP 工具加载完成: {len(tools)} 个")
             except Exception as e:
-                print(f"⚠️  MCP 工具加载失败: {e}")
+                logger.warning(f"⚠️  MCP 工具加载失败: {e}")
                 if self.mode == "mcp_only":
                     # 如果强制 MCP 但连不上，必须抛出异常
                     raise RuntimeError(f"MCP 模式加载失败: {e}")
                 else:
                     # hybrid 模式下可降级为 native_only
-                    print("🔄 降级为 native_only 模式")
+                    logger.info("🔄 降级为 native_only 模式")
                     self.mode = "native_only"
 
         # 加载复合技能（将其转换为工具）
@@ -62,7 +63,7 @@ class ToolRegistry:
             self._skill_tools = skill_registry.get_tools()
         else:
             self._skill_tools = []
-        print(f"✅ 加载了 {len(self._skill_tools)} 个复合技能")
+        logger.info(f"✅ 加载了 {len(self._skill_tools)} 个复合技能")
         
         # 加载 MD 技能
         self._md_skill_tools = []
@@ -70,11 +71,11 @@ class ToolRegistry:
             loader = SkillLoader(settings.md_skills_dir)
             loader.load_index()
             self._md_skill_tools = load_all_md_skills(loader)
-            print(f"✅ 加载了 {len(self._md_skill_tools)} 个 MD 技能")
+            logger.info(f"✅ 加载了 {len(self._md_skill_tools)} 个 MD 技能")
             # 可选：保存 loader 供后续使用
             self._md_loader = loader
 
-        print(f"✅ 原生工具加载完成: {len(self._native_tools)} 个")
+        logger.info(f"✅ 原生工具加载完成: {len(self._native_tools)} 个")
         self._is_initialized = True
 
     def get_tools(self) -> List[BaseTool]:
