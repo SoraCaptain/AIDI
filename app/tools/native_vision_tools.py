@@ -30,21 +30,24 @@ class SegmentationResult(BaseModel):
 # ---------- 核心工具函数 ----------
 
 @tool
-async def detect_objects(image_path: str, threshold: float = 0.3) -> str:
+async def detect_objects(image_path: str, 
+                         conf: float = 0.25,
+                         imgsz: int = 640,) -> str:
     """
     使用 CV Server 检测图像中的物体。
     
     Args:
         image_path: 图像的本地路径或 HTTP URL
-        threshold: 检测置信度阈值，默认 0.3
+        conf: 检测置信度阈值，默认 0.25
+        imgsz: 图像尺寸，默认 640
     
     Returns:
         JSON 字符串，包含检测到的 boxes, labels, scores
     """
     async with httpx.AsyncClient(timeout=settings.cv_timeout) as client:
         response = await client.post(
-            f"{settings.cv_server}/detect",
-            json={"image_path": image_path, "threshold": threshold}
+            f"{settings.cv_server}/yolo/detect",
+            json={"image_path": _resolve_image(image_path), "conf": conf, "imgsz": imgsz}
         )
         response.raise_for_status()
         data = response.json()
@@ -52,21 +55,21 @@ async def detect_objects(image_path: str, threshold: float = 0.3) -> str:
 
 
 @tool
-async def segment_objects(image_path: str, threshold: float = 0.3) -> str:
+async def segment_objects(image_path: str, max_masks: int = 20) -> str:
     """
     使用 CV Server 对图像进行实例分割。
     
     Args:
         image_path: 图像的本地路径或 HTTP URL
-        threshold: 分割置信度阈值，默认 0.3
+        max_masks: 最大分割掩码数量，默认 20
     
     Returns:
         JSON 字符串，包含 masks (base64), labels, scores
     """
     async with httpx.AsyncClient(timeout=settings.cv_timeout) as client:
         response = await client.post(
-            f"{settings.cv_server}/segment",
-            json={"image_path": image_path, "threshold": threshold}
+            f"{settings.cv_server}/sam/segment_auto",
+            json={"image_path": _resolve_image(image_path), "max_masks": max_masks}
         )
         response.raise_for_status()
         data = response.json()
@@ -88,8 +91,8 @@ async def grounding_dino(image_path: str, text_prompt: str, threshold: float = 0
     """
     async with httpx.AsyncClient(timeout=settings.gdino_timeout) as client:
         response = await client.post(
-            f"{settings.gdino_server}/grounding",
-            json={"image_path": image_path, "text_prompt": text_prompt, "threshold": threshold}
+            f"{settings.gdino_server}/grounding/detect",
+            json={"image_path": _resolve_image(image_path), "text_prompt": text_prompt, "threshold": threshold}
         )
         response.raise_for_status()
         data = response.json()

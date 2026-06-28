@@ -12,7 +12,11 @@ from langchain_core.tools import BaseTool
 
 from app.config import settings
 from app.mcp_clients.vision_mcp_client import load_vision_mcp_tools
+from app.skills.registry import SkillRegistry
 from app.tools.native_vision_tools import NATIVE_VISION_TOOLS
+from app.skills.registry import SkillRegistry
+from app.skills.skill_loader import SkillLoader
+from app.skills.md_skill_adapter import load_all_md_skills
 
 
 class ToolRegistry:
@@ -52,6 +56,24 @@ class ToolRegistry:
                     print("🔄 降级为 native_only 模式")
                     self.mode = "native_only"
 
+        # 加载复合技能（将其转换为工具）
+        if settings.enable_skills:
+            skill_registry = SkillRegistry()
+            self._skill_tools = skill_registry.get_tools()
+        else:
+            self._skill_tools = []
+        print(f"✅ 加载了 {len(self._skill_tools)} 个复合技能")
+        
+        # 加载 MD 技能
+        self._md_skill_tools = []
+        if settings.enable_md_skills:
+            loader = SkillLoader(settings.md_skills_dir)
+            loader.load_index()
+            self._md_skill_tools = load_all_md_skills(loader)
+            print(f"✅ 加载了 {len(self._md_skill_tools)} 个 MD 技能")
+            # 可选：保存 loader 供后续使用
+            self._md_loader = loader
+
         print(f"✅ 原生工具加载完成: {len(self._native_tools)} 个")
         self._is_initialized = True
 
@@ -60,19 +82,24 @@ class ToolRegistry:
         if not self._is_initialized:
             raise RuntimeError("请先调用 initialize()")
 
-        if self.mode == "mcp_only":
-            return self._mcp_tools
-        elif self.mode == "native_only":
-            return self._native_tools
-        else:  # hybrid
-            # 合并，并去重（如果工具名称相同，优先使用原生工具）
-            all_tools = {tool.name: tool for tool in self._native_tools}
+        all_tools = {}
+
+        if self.mode in ("native_only", "hybrid"):
+            for tool in self._native_tools:
+                all_tools[tool.name] = tool
+            # 添加技能（技能名称通常更长，如 comprehensive_image_analysis，不会冲突）
+            for tool in self._md_skill_tools:
+                if tool.name not in all_tools:
+                    all_tools[tool.name] = tool
+            for tool in self._skill_tools:
+                all_tools[tool.name] = tool
+                
+        if self.mode in ("mcp_only", "hybrid"):
             for tool in self._mcp_tools:
                 if tool.name not in all_tools:
                     all_tools[tool.name] = tool
-                else:
-                    print(f"ℹ️  MCP 工具 '{tool.name}' 与原生工具重名，已跳过")
-            return list(all_tools.values())
+
+        return list(all_tools.values())
 
     async def close(self):
         return
@@ -92,5 +119,6 @@ class ToolRegistry:
             "mode": self.mode,
             "native_tools_count": len(self._native_tools),
             "mcp_tools_count": len(self._mcp_tools),
+            "skill_tools_count": len(self._skill_tools),
             "total_tools": len(self.get_tools()),
         }
