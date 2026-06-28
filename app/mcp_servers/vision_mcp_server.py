@@ -105,11 +105,10 @@ def ocr_image(image_path: str) -> dict:
         image_path: Image path or URL accessible by the OCR/CV server.
     """
 
-    return post_cv(
-        "/ocr",
-        {"image_path": _resolve_image(image_path)},
-        timeout=120,
-    )
+    resolved = _resolve_image(image_path)
+    result = post_cv("/ocr", {"image_path": resolved}, timeout=120)
+    result["image_path"] = image_path   # replace base64 with original path
+    return result
 
 
 @mcp.tool()
@@ -132,16 +131,18 @@ def detect_objects_yolo(
         conf: Confidence threshold.
         imgsz: Inference image size.
     """
-
-    return post_cv(
-        "/yolo/detect",
-        {
-            "image_path": _resolve_image(image_path),
-            "conf": conf,
-            "imgsz": imgsz,
-        },
-        timeout=60,
-    )
+    resolved = _resolve_image(image_path)
+    result = post_cv(
+                "/yolo/detect",
+                {
+                    "image_path": resolved,
+                    "conf": conf,
+                    "imgsz": imgsz,
+                },
+                timeout=60,
+            )
+    result["image_path"] = image_path   # replace base64 with original path
+    return result
 
 
 @mcp.tool()
@@ -162,15 +163,17 @@ def segment_with_sam(
         image_path: Image path or URL accessible by the CV server.
         max_masks: Maximum number of mask summaries to return.
     """
-
-    return post_cv(
+    resolved = _resolve_image(image_path)
+    result = post_cv(
         "/sam/segment_auto",
         {
-            "image_path": _resolve_image(image_path),
+            "image_path": resolved,
             "max_masks": max_masks,
         },
         timeout=180,
     )
+    result["image_path"] = image_path   # replace base64 with original path
+    return result
 
 
 @mcp.tool()
@@ -195,17 +198,19 @@ def grounding_detect(
         box_threshold: Box confidence threshold.
         text_threshold: Text matching threshold.
     """
-
-    return post_gdino(
+    resolved = _resolve_image(image_path)
+    result = post_gdino(
         "/grounding/detect",
         {
-            "image_path": _resolve_image(image_path),
+            "image_path": resolved,
             "text_prompt": text_prompt,
             "box_threshold": box_threshold,
             "text_threshold": text_threshold,
         },
         timeout=180,
     )
+    result["image_path"] = image_path   # replace base64 with original path
+    return result
 
 
 # @mcp.tool()
