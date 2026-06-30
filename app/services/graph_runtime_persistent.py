@@ -8,9 +8,9 @@ from langgraph.checkpoint.postgres.aio import AsyncPostgresSaver
 
 from app.tools.tool_registry import ToolRegistry
 from app.memory.memory_manager import MemoryManager
-from app.graphs.parallel_multi_agent_vision_graph import (
-    build_parallel_multi_agent_vision_graph,
-)
+from app.graphs.dynamic_vision_graph import build_dynamic_vision_graph
+# from app.graphs.parallel_multi_agent_vision_graph import build_parallel_multi_agent_vision_graph
+from app.agents.local_models import get_text_llm
 from app.observability.langfuse_client import (
     get_langfuse_handler,
     build_trace_metadata,
@@ -112,11 +112,18 @@ class PersistentGraphRuntime:
             self.checkpointer = await self._checkpointer_cm.__aenter__()
             logger.info(f"✅ SQLite 检查点已就绪: {self.checkpoint_db_path}")
 
-        self.app = build_parallel_multi_agent_vision_graph(
-            mcp_tools=self.mcp_tools,  # 这里传的是所有工具
-            memory_manager=self.memory_manager,
+        llm = get_text_llm(temperature=0)
+
+        self.app = build_dynamic_vision_graph(
             checkpointer=self.checkpointer,
+            llm=llm,
+            tool_registry=self.tool_registry,
         )
+        # self.app = build_parallel_multi_agent_vision_graph(
+        #     mcp_tools=self.mcp_tools,  # 这里传的是所有工具
+        #     memory_manager=self.memory_manager,
+        #     checkpointer=self.checkpointer,
+        # )
 
     async def close(self):
         if self._checkpointer_cm is not None:
@@ -140,7 +147,7 @@ class PersistentGraphRuntime:
             extra={
                 "task_id": task_id,
                 "entrypoint": "fastapi_gateway",
-                "graph": "parallel_multi_agent_vision_graph",
+                "graph": "dynamic_vision_graph",
                 "checkpoint": "sqlite",
             },
         )
@@ -192,7 +199,6 @@ class PersistentGraphRuntime:
             question=question,
             image_url=image_url,
         )
-
         result = await self.app.ainvoke(initial_state, config=config)
         return self._normalize_result(result)
     

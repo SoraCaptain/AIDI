@@ -230,6 +230,7 @@ async def inspect_image(image_path: str) -> dict:
 NATIVE_VISION_TOOLS = [
     vlm_understand_image,
     detect_blur,
+    inspect_image
 ]
 
 # 工具名称映射（方便去重和调试）
