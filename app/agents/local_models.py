@@ -18,4 +18,5 @@ def get_text_llm(temperature: float = 0):
         api_key=os.getenv("OPENAI_API_KEY", "dummy"),
         base_url=os.getenv("OPENAI_BASE_URL"),
         temperature=temperature,
+        request_timeout=int(os.getenv("LLM_REQUEST_TIMEOUT", "120")),
     )

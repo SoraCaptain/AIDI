@@ -112,12 +112,10 @@ class PersistentGraphRuntime:
             self.checkpointer = await self._checkpointer_cm.__aenter__()
             logger.info(f"✅ SQLite 检查点已就绪: {self.checkpoint_db_path}")
 
-        llm = get_text_llm(temperature=0)
-
-        self.app = build_dynamic_vision_graph(
+        self.app = await build_dynamic_vision_graph(
+            mcp_tools=self.mcp_tools,
+            memory_manager=self.memory_manager,
             checkpointer=self.checkpointer,
-            llm=llm,
-            tool_registry=self.tool_registry,
         )
         # self.app = build_parallel_multi_agent_vision_graph(
         #     mcp_tools=self.mcp_tools,  # 这里传的是所有工具

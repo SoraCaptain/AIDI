@@ -239,7 +239,7 @@ class DynamicRouter:
 
         return results
 
-    async def _run_single_agent(self, agent_name: str, state: Dict, context_results: Dict) -> Any:
+    async def _run_single_agent(self, agent_name: str, state: Dict, context_results: Dict, timeout: int = 90) -> Any:
         """
         执行单个 Agent，并注入已有的上下文结果
         """
@@ -262,8 +262,11 @@ class DynamicRouter:
             return {"error": f"Unknown agent: {agent_name}"}
 
         try:
-            result = await func(enhanced_state)
+            result = await asyncio.wait_for(func(enhanced_state), timeout=timeout)
             return result
+        except asyncio.TimeoutError:
+            logger.error(f"❌ Agent {agent_name} 执行超时 ({timeout}s)")
+            return {"error": f"Agent {agent_name} timed out after {timeout}s"}
         except Exception as e:
             logger.error(f"❌ Agent {agent_name} 执行失败: {e}")
             return {"error": str(e)}
