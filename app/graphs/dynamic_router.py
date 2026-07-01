@@ -11,7 +11,8 @@ from app.tools.tool_registry import ToolRegistry
 
 # 引入各个 Agent 的执行函数（你需要根据实际情况 import）
 # 这里假设你有 async def run_ocr(state), run_detection(state) 等
-from app.agents import run_ocr, run_detection, run_segmentation, run_grounding_dino, run_vlm
+from app.agents import run_ocr, run_detection, run_segmentation, run_grounding_dino, run_vlm, run_quality
+from utils.logger import logger
 
 
 def safe_json_loads(text: str) -> dict:
@@ -64,8 +65,10 @@ class DynamicRouter:
             3. segmentation: 实例分割（生成像素级掩码），通常依赖 detection
             4. grounding_dino: 根据文本描述定位特定物体
             5. vlm_understanding: 多模态大模型理解（擅长复杂场景描述、推理）
+            6. quality: 检查图片质量，检查图片清晰度，提取图片基本信息
 
             规则：
+            - 如果用户问图片质量如何或想知道图片的基本信息，则调用quality
             - 如果用户只问文字，只用 ocr。
             - 如果用户问“有什么物体”，用 detection + vlm（用于描述）。
             - 如果用户问“有多少/在哪里”，用 detection。
@@ -80,7 +83,7 @@ class DynamicRouter:
             "reasoning": "思考过程",
             "tasks": [ {{ "agent_name": "detection", "depends_on": [], "fallback_agent": "vlm_understanding" }} ],
             "parallel_groups": [ ["ocr", "detection"] ],  // 这些可并行
-            "required_capabilities": ["cv_server", "vlm_server"]
+            "required_capabilities": ["cv_server", "vlm_server", "gdino_server"]
             }}
             """
         human_prompt = f"用户问题：{question}\n图像路径：{image_path}"
@@ -96,7 +99,7 @@ class DynamicRouter:
             return ExecutionPlan(**plan_dict)
         except Exception as e:
             # 默认降级策略：全部运行（兼容旧逻辑）
-            print(f"⚠️  计划解析失败，使用默认全量计划: {e}")
+            logger.warning(f"⚠️  计划解析失败，使用默认全量计划: {e}")
             return ExecutionPlan(
                 reasoning="降级到全量并行模式",
                 tasks=[
@@ -104,8 +107,10 @@ class DynamicRouter:
                     AgentTask(agent_name="detection"),
                     AgentTask(agent_name="segmentation", depends_on=["detection"]),
                     AgentTask(agent_name="vlm_understanding"),
+                    AgentTask(agent_name="quality"),
+                    AgentTask(agent_name="grounding_dino")
                 ],
-                parallel_groups=[["ocr", "detection"], ["vlm_understanding"]]
+                parallel_groups=[["ocr", "detection"], ["vlm_understanding"], ["quality"], ["grounding_dino"]]
             )
 
     # ========== 2. 服务器健康检查（负载感知） ==========
@@ -128,6 +133,16 @@ class DynamicRouter:
                     health_status["cv_server"] = resp.status_code == 200
             except:
                 health_status["cv_server"] = False
+
+        if "gdino_server" in capabilities:
+            try:
+                # 简单的 ping
+                import httpx
+                async with httpx.AsyncClient() as client:
+                    resp = await client.get(f"{settings.gdino_server}/health", timeout=2.0)
+                    health_status["gdino_server"] = resp.status_code == 200
+            except:
+                health_status["gdino_server"] = False
 
         if "vlm_server" in capabilities:
             try:
@@ -157,12 +172,14 @@ class DynamicRouter:
             required_servers = []
             if task.agent_name in ["ocr", "detection", "segmentation"]:
                 required_servers.append("cv_server")
+            if task.agent_name in ["grounding_dino"]:
+                required_servers.append("gdino_server")
             if task.agent_name in ["vlm_understanding"]:
                 required_servers.append("vlm_server")
 
             is_healthy = all(health.get(s, True) for s in required_servers)
             if not is_healthy and task.fallback_agent:
-                print(f"⚠️  {task.agent_name} 服务器不可用，降级到 {task.fallback_agent}")
+                logger.warning(f"⚠️  {task.agent_name} 服务器不可用，降级到 {task.fallback_agent}")
                 # 替换为降级 Agent
                 fallback_task = AgentTask(
                     agent_name=task.fallback_agent,
@@ -173,7 +190,7 @@ class DynamicRouter:
             elif is_healthy:
                 available_agents.append(task)
             else:
-                print(f"❌ 跳过 {task.agent_name}（服务器不可用且无降级）")
+                logger.warning(f"❌ 跳过 {task.agent_name}（服务器不可用且无降级）")
 
         # 3.2 构造并行 DAG
         # 这里简化：先处理并行组，再处理串行依赖
@@ -213,7 +230,7 @@ class DynamicRouter:
             for dep in task.depends_on:
                 if dep not in results:
                     # 如果依赖未执行，尝试执行它（递归/兜底）
-                    print(f"⚠️  依赖 {dep} 未执行，尝试自动补齐")
+                    logger.info(f"⚠️  依赖 {dep} 未执行，尝试自动补齐")
                     results[dep] = await self._run_single_agent(dep, state, results)
             # 执行当前任务
             results[task.agent_name] = await self._run_single_agent(
@@ -226,7 +243,7 @@ class DynamicRouter:
         """
         执行单个 Agent，并注入已有的上下文结果
         """
-        print(f"▶️  运行 Agent: {agent_name}")
+        logger.info(f"▶️  运行 Agent: {agent_name}")
 
         # 将上下文结果合并到 state 中
         enhanced_state = {**state, "context_results": context_results}
@@ -238,6 +255,7 @@ class DynamicRouter:
             "segmentation": run_segmentation,
             "grounding_dino": run_grounding_dino,
             "vlm_understanding": run_vlm,
+            "quality": run_quality
         }
         func = agent_map.get(agent_name)
         if not func:
@@ -247,5 +265,5 @@ class DynamicRouter:
             result = await func(enhanced_state)
             return result
         except Exception as e:
-            print(f"❌ Agent {agent_name} 执行失败: {e}")
+            logger.error(f"❌ Agent {agent_name} 执行失败: {e}")
             return {"error": str(e)}

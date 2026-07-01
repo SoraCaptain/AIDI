@@ -200,7 +200,9 @@ async def detect_blur(image_path: str) -> dict:
             json={"image_path": _resolve_image(image_path)}
         )
         response.raise_for_status()
-        return response.json()
+        res_json = response.json()
+        res_json["image_path"] = image_path
+        return res_json
 
 
 @tool()
@@ -220,10 +222,12 @@ async def inspect_image(image_path: str) -> dict:
     async with httpx.AsyncClient(timeout=settings.cv_timeout) as client:
         response = await client.post(
             f"{settings.cv_server}/inspect",
-            json={"image_path": image_path}
+            json={"image_path": _resolve_image(image_path)}
         )
         response.raise_for_status()
-        return response.json()
+        res_json = response.json()
+        res_json['image_path'] = image_path
+        return res_json
     
     
 # ---------- 工具列表（供注册中心使用） ----------

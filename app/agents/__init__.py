@@ -3,6 +3,7 @@ from .detection_agent import run_detection
 from .segmentation_agent import run_segmentation
 from .grounding_dino_agent import run_grounding_dino
 from .vlm_agent import run_vlm
+from .quality_agent import run_quality
 
 __all__ = [
     "run_ocr",
@@ -10,4 +11,5 @@ __all__ = [
     "run_segmentation",
     "run_grounding_dino",
     "run_vlm",
+    "run_quality"
 ]

@@ -3,7 +3,7 @@ from typing import List, Optional, Literal
 from pydantic import BaseModel
 
 class AgentTask(BaseModel):
-    agent_name: Literal["ocr", "detection", "segmentation", "grounding_dino", "vlm_understanding"]
+    agent_name: Literal["ocr", "detection", "segmentation", "grounding_dino", "vlm_understanding", "quality"]
     depends_on: List[str] = []  # 依赖的前置任务列表，如 detection 依赖 grounding_dino
     fallback_agent: Optional[str] = None  # 如果失败，降级到哪个 Agent
 

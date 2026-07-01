@@ -99,7 +99,7 @@ class ToolRegistry:
             for tool in self._mcp_tools:
                 if tool.name not in all_tools:
                     all_tools[tool.name] = tool
-
+        logger.info(f"加载工具：{all_tools.keys()}")
         return list(all_tools.values())
 
     async def close(self):
