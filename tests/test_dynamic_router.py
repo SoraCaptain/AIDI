@@ -12,10 +12,11 @@ async def test_router():
         result = await runtime.run_task(
             task_id="test_router_1",
             thread_id=f"thread_router_{uuid.uuid4().hex[:8]}",
-            question="提取这张图片里的所有文字",
-            image_url="test_imgs/menu.png"
+            question="找到这张图里的所有人的准确位置",
+            image_url="test_imgs/Family.jpg"
         )
         print(f"结果: {result['final_answer']}")
+        print(result)
     except Exception as e:
         print(f"Query 1 错误: {e}")
 

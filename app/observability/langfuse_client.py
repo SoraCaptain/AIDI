@@ -1,15 +1,59 @@
 # app/observability/langfuse_client.py
 
 import os
+import time
 from typing import Dict, Any, Optional
+from uuid import UUID
 
 from dotenv import load_dotenv
 from langfuse import get_client
-from langfuse.langchain import CallbackHandler
-
+from langfuse.langchain import CallbackHandler as _LangfuseCallbackHandler
+from contextlib import asynccontextmanager
 from utils.logger import logger
 
 load_dotenv()
+
+# 模块级变量用于跨 LangGraph context 传递当前 trace 上下文
+# ContextVar 在 LangChain callback 隔离的 context 中不可用，
+# 所以使用普通的模块级变量（本应用为单请求模式）
+_current_trace_id: Optional[str] = None
+_current_observation_id: Optional[str] = None
+
+
+class _TracingCallbackHandler(_LangfuseCallbackHandler):
+    """自定义 CallbackHandler，在 on_chain_start 时将 trace/observation id 写入模块级变量。"""
+
+    def on_chain_start(
+        self,
+        serialized,
+        inputs,
+        *,
+        run_id: UUID,
+        parent_run_id: Optional[UUID] = None,
+        tags: Optional[list[str]] = None,
+        metadata: Optional[dict] = None,
+        **kwargs,
+    ):
+        result = super().on_chain_start(
+            serialized, inputs,
+            run_id=run_id, parent_run_id=parent_run_id,
+            tags=tags, metadata=metadata, **kwargs,
+        )
+        if self.last_trace_id:
+            global _current_trace_id, _current_observation_id
+            _current_trace_id = self.last_trace_id
+            obs = self._runs.get(run_id)
+            if obs is not None:
+                _current_observation_id = str(obs.id)
+        return result
+
+    def on_chain_end(self, outputs, *, run_id: UUID, parent_run_id=None, **kwargs):
+        result = super().on_chain_end(outputs, run_id=run_id, parent_run_id=parent_run_id, **kwargs)
+        global _current_observation_id
+        parent_obs = self._runs.get(parent_run_id) if parent_run_id else None
+        if parent_obs is not None:
+            _current_observation_id = str(parent_obs.id)
+        return result
 
 
 def get_langfuse_client():
@@ -23,11 +67,13 @@ def get_langfuse_client():
     return get_client()
 
 
-def get_langfuse_handler() -> CallbackHandler:
+def get_langfuse_handler() -> _TracingCallbackHandler:
     """
     LangChain / LangGraph callback handler。
+    使用自定义子类，通过模块级变量在 LangGraph node 间传递 trace 上下文。
+    会覆盖父类的 on_chain_start / on_chain_end 以实现 trace 信息传递。
     """
-    return CallbackHandler()
+    return _TracingCallbackHandler()
 
 
 def build_trace_metadata(
@@ -89,6 +135,45 @@ def score_trace_safe(
     except Exception as e:
         logger.warning(f"Langfuse score failed: {repr(e)}")
 
+
+@asynccontextmanager
+async def trace_span(name: str, metadata: Optional[Dict] = None):
+    """
+    手动创建 Langfuse span，自动继承当前 LangGraph trace 上下文。
+
+    trace_id 和 observation_id 通过模块级变量从 _TracingCallbackHandler 传递，
+    绕过 LangChain callback context 隔离的限制。
+    未配置 LANGFUSE_PUBLIC_KEY 时静默跳过。
+    """
+    if not os.getenv("LANGFUSE_PUBLIC_KEY"):
+        yield None
+        return
+
+    trace_id = _current_trace_id
+    obs_id = _current_observation_id
+
+    span_kwargs: Dict[str, Any] = {"name": name}
+    if metadata:
+        span_kwargs["metadata"] = metadata
+    if trace_id:
+        tc: Dict[str, str] = {"trace_id": trace_id}
+        if obs_id:
+            tc["parent_span_id"] = obs_id
+        span_kwargs["trace_context"] = tc
+
+    client = get_langfuse_client()
+    start = time.time()
+    try:
+        with client.start_as_current_observation(**span_kwargs) as current_span:
+            yield current_span
+            duration_s = time.time() - start
+            try:
+                current_span.update(metadata={"duration_s": round(duration_s, 3)})
+            except Exception:
+                pass
+    except Exception as e:
+        logger.warning(f"Langfuse trace_span '{name}' failed: {repr(e)}")
+        yield None
 
 # 观测清单
 # 1. 是否能看到一条完整 trace？

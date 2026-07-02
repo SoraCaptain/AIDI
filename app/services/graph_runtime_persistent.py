@@ -14,6 +14,7 @@ from app.agents.local_models import get_text_llm
 from app.observability.langfuse_client import (
     get_langfuse_handler,
     build_trace_metadata,
+    flush_langfuse,
 )
 # ⬇️ 新增导入配置单例
 from app.config import settings as app_settings
@@ -126,6 +127,7 @@ class PersistentGraphRuntime:
     async def close(self):
         if self._checkpointer_cm is not None:
             await self._checkpointer_cm.__aexit__(None, None, None)
+        flush_langfuse()
     
     def _build_config(
         self,
@@ -237,7 +239,7 @@ class PersistentGraphRuntime:
                 "raw_result": result,
                 "final_answer": None,
                 "trace_summary": {
-                    "required_agents": result.get("required_agents"),
+                    "required_agents": result.get("required_agents") or list((result.get("agent_results") or {}).keys()),
                     "critic_decision": result.get("critic_decision"),
                     "critic_reason": result.get("critic_reason"),
                     "retry_count": result.get("retry_count"),
@@ -255,7 +257,7 @@ class PersistentGraphRuntime:
             "raw_result": result,
             "final_answer": final_answer,
             "trace_summary": {
-                "required_agents": result.get("required_agents"),
+                "required_agents": result.get("required_agents") or list((result.get("agent_results") or {}).keys()),
                 "critic_decision": result.get("critic_decision"),
                 "critic_reason": result.get("critic_reason"),
                 "human_decision": result.get("human_decision"),

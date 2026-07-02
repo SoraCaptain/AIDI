@@ -12,12 +12,12 @@ from langchain_core.tools import BaseTool
 
 from app.config import settings
 from app.mcp_clients.vision_mcp_client import load_vision_mcp_tools
-from app.skills.registry import SkillRegistry
 from app.tools.native_vision_tools import NATIVE_VISION_TOOLS
 from app.skills.registry import SkillRegistry
 from app.skills.skill_loader import SkillLoader
 from app.skills.md_skill_adapter import load_all_md_skills
 from utils.logger import logger
+
 
 
 class ToolRegistry:
@@ -88,7 +88,6 @@ class ToolRegistry:
         if self.mode in ("native_only", "hybrid"):
             for tool in self._native_tools:
                 all_tools[tool.name] = tool
-            # 添加技能（技能名称通常更长，如 comprehensive_image_analysis，不会冲突）
             for tool in self._md_skill_tools:
                 if tool.name not in all_tools:
                     all_tools[tool.name] = tool
@@ -99,7 +98,7 @@ class ToolRegistry:
             for tool in self._mcp_tools:
                 if tool.name not in all_tools:
                     all_tools[tool.name] = tool
-        logger.info(f"加载工具：{all_tools.keys()}")
+        logger.info(f"加载工具：{list(all_tools.keys())}")
         return list(all_tools.values())
 
     async def close(self):

@@ -3,11 +3,13 @@
 技能系统基类
 定义了一个复合技能的标准接口
 """
+import time
 from abc import ABC, abstractmethod
 from typing import Dict, Any, Optional, Type
 from pydantic import BaseModel, Field
 from langchain_core.tools import BaseTool, StructuredTool
 from langchain_core.runnables import RunnableConfig
+from app.observability.metrics import record_skill_call
 
 
 class SkillInput(BaseModel):
@@ -72,3 +74,15 @@ class BaseSkill(ABC):
             func=_run,
             args_schema=self.input_schema,
         )
+
+    async def execute(self, **kwargs):
+        start = time.time()
+        try:
+            result = await self._execute_impl(**kwargs)
+            status = "success"
+            return result
+        except Exception:
+            status = "failure"
+            raise
+        finally:
+            record_skill_call(self.name, status)

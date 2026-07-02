@@ -3,6 +3,7 @@ from typing import Any
 from langchain.agents import create_agent
 from app.agents.local_models import get_text_llm
 from app.mcp_clients.vision_mcp_client import load_vision_mcp_tools
+from app.observability.metrics_callback import MetricsCallbackHandler
 from .utils import select_tools
 
 
@@ -39,7 +40,10 @@ async def run_detection(state: dict[str, Any]) -> dict:
         """
 
     try:
-        result = await agent.ainvoke(
+        agent_with_metrics = agent.with_config(
+            callbacks=[MetricsCallbackHandler("mcp")]
+        )
+        result = await agent_with_metrics.ainvoke(
             {"messages": [{"role": "user", "content": user_message}]},
             config={
                 "run_name": "detection_agent_parallel",
