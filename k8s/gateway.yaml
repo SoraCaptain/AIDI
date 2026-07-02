@@ -22,15 +22,23 @@ spec:
     spec:
       containers:
       - name: gateway
-        image: your-registry/aidi-gateway:latest
-        imagePullPolicy: Always
+        image: aidi-gateway:latest
+        imagePullPolicy: IfNotPresent
         ports:
         - containerPort: 8400
-        envFrom:
-        - configMapRef:
-            name: aidi-config
-        - secretRef:
-            name: aidi-secrets
+        env:
+        - name: MODEL_NAME
+          value: "Qwen/Qwen3.6-35B-A3B"
+        - name: AIDI_USE_POSTGRES_CHECKPOINTER
+          value: "true"
+        - name: AIDI_POSTGRES_CHECKPOINTER_URI
+          value: "postgres://aidi_user:secure_password@postgres-service:5432/aidi_checkpoints"
+        - name: CV_SERVER
+          value: "http://cvserver-service:8200"
+        - name: GDINO_SERVER
+          value: "http://gdinoserver-service:8210"
+        - name: VLM_SERVER
+          value: "http://vlm-service:8002"
         resources:
           requests:
             cpu: "500m"

@@ -15,9 +15,10 @@ RUN pip install -r requirements.txt
 # 复制项目代码
 COPY app/ ./app/
 COPY data/ ./data/
+COPY utils/ ./utils/
 
 # 暴露端口
 EXPOSE 8400
 
 # 启动命令
-CMD ["uv", "run", "uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8400"]
+CMD ["python", "-m", "uvicorn", "app.api.gateway:app", "--host", "0.0.0.0", "--port", "8400"]

@@ -83,3 +83,11 @@ uv export \
     -o requirements.txt
 
 docker build -f dockers/Dockerfile.gateway -t aidi-gateway:latest .
+部署
+kubectl apply -f gateway.yaml
+
+# 停止所有 Gateway Pod：
+kubectl scale deployment gateway --replicas=0 -n aidi
+
+# 看log
+kubectl logs -n aidi gateway-7966b7448f-5zc27 --previous
