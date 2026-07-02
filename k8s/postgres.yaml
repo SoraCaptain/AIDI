@@ -1,0 +1,56 @@
+# k8s/postgres.yaml
+apiVersion: v1
+kind: Service
+metadata:
+  name: postgres-service
+  namespace: aidi
+spec:
+  selector:
+    app: postgres
+  ports:
+    - port: 5431
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: postgres
+  namespace: aidi
+spec:
+  serviceName: postgres-service
+  replicas: 1
+  selector:
+    matchLabels:
+      app: postgres
+  template:
+    metadata:
+      labels:
+        app: postgres
+    spec:
+      containers:
+      - name: postgres
+        image: postgres:15
+        env:
+        - name: POSTGRES_USER
+          value: "aidi_user"
+        - name: POSTGRES_PASSWORD
+          value: "secure_password"
+        - name: POSTGRES_DB
+          value: "aidi_checkpoints"
+        ports:
+        - containerPort: 5431
+        volumeMounts:
+        - name: postgres-storage
+          mountPath: /var/lib/postgresql/data
+        readinessProbe:
+          exec:
+            command: ["pg_isready", "-U", "aidi_user"]
+          initialDelaySeconds: 5
+          periodSeconds: 10
+  volumeClaimTemplates:
+  - metadata:
+      name: postgres-storage
+    spec:
+      accessModes: ["ReadWriteOnce"]
+      resources:
+        requests:
+          storage: 10Gi

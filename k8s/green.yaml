@@ -1,0 +1,24 @@
+# 绿色版本（新版本）
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: gateway-green
+  namespace: aidi
+  labels:
+    version: green
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: gateway
+      version: green
+  template:
+    metadata:
+      labels:
+        app: gateway
+        version: green
+    spec:
+      containers:
+      - name: gateway
+        image: your-registry/aidi-gateway:new-tag
+        # ... 其他配置

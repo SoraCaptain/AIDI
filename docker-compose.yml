@@ -1,3 +1,4 @@
+version: '3.8'
 services:
   postgres:
     image: postgres:15
@@ -15,6 +16,49 @@ services:
       interval: 5s
       timeout: 3s
       retries: 5
+
+  gateway:
+    build:
+      context: .
+      dockerfile: Dockerfile.gateway
+    ports:
+      - "8400:8400"
+    environment:
+      - AIDI_USE_POSTGRES_CHECKPOINTER=true
+      - AIDI_POSTGRES_CHECKPOINTER_URI=postgres://aidi_user:secure_password@postgres:5432/aidi_checkpoints
+      - CV_SERVER=http://cvserver:8200
+      - GDINO_SERVER=http://gdinoserver:8210
+      - VLM_SERVER=http://vlm:8002
+      - LANGFUSE_PUBLIC_KEY=${LANGFUSE_PUBLIC_KEY}
+      - LANGFUSE_SECRET_KEY=${LANGFUSE_SECRET_KEY}
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  cvserver:
+    build:
+      context: .
+      dockerfile: Dockerfile.cvserver
+    ports:
+      - "8200:8200"
+    # 可以添加 healthcheck
+
+  gdinoserver:
+    image: your-groundingdino-image:latest   # 或独立构建
+    ports:
+      - "8210:8210"
+
+  vlm:
+    image: vllm/vllm-openai:latest
+    command: ["--model", "Qwen/Qwen3-VL-8B-Instruct", "--port", "8002"]
+    ports:
+      - "8002:8002"
+    resources:
+      reservations:
+        devices:
+          - driver: nvidia
+            count: all
+            capabilities: [gpu]
 
 volumes:
   postgres_data:

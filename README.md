@@ -20,4 +20,3 @@ Native tools:
     vlm_understand_image,
     detect_blur,
     inspect_image
-    

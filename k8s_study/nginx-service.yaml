@@ -1,0 +1,13 @@
+# Service 让外部流量能找到这些 Pod
+apiVersion: v1
+kind: Service
+metadata:
+  name: nginx-service
+spec:
+  selector:
+    app: nginx                    # 通过标签选择哪些 Pod
+  ports:
+  - protocol: TCP
+    port: 80
+    targetPort: 80
+  type: NodePort                  # 通过节点端口暴露[reference:7]

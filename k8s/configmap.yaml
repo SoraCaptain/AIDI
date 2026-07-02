@@ -1,0 +1,12 @@
+# k8s/configmap.yaml
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: aidi-config
+  namespace: aidi
+data:
+  AIDI_USE_POSTGRES_CHECKPOINTER: "true"
+  AIDI_POSTGRES_CHECKPOINTER_URI: "postgres://aidi_user:secure_password@postgres-service:5431/aidi_checkpoints"
+  CV_SERVER: "http://cvserver-service:8200"
+  GDINO_SERVER: "http://gdinoserver-service:8210"
+  VLM_SERVER: "http://vlm-service:8002"

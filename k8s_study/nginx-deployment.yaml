@@ -1,0 +1,21 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: nginx-demo
+  labels:
+    app: nginx
+spec:
+  replicas: 3                      # 我要 3 个副本
+  selector:
+    matchLabels:
+      app: nginx
+  template:                        # 每个 Pod 的模板
+    metadata:
+      labels:
+        app: nginx
+    spec:
+      containers:
+      - name: nginx
+        image: nginx:1.25
+        ports:
+        - containerPort: 80

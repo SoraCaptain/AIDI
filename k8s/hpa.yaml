@@ -1,0 +1,33 @@
+# k8s/hpa.yaml
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: gateway-hpa
+  namespace: aidi
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: gateway
+  minReplicas: 2
+  maxReplicas: 10
+  metrics:
+  - type: Pods
+    pods:
+      metric:
+        name: agent_requests_total_per_second   # Prometheus 自定义指标
+      target:
+        type: AverageValue
+        averageValue: 100  # 每个 Pod 每秒最多处理 100 个请求
+  - type: Resource
+    resource:
+      name: cpu
+      target:
+        type: Utilization
+        averageUtilization: 70
+  - type: Resource
+    resource:
+      name: memory
+      target:
+        type: Utilization
+        averageUtilization: 80
